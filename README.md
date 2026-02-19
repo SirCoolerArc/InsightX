@@ -178,11 +178,11 @@ python -m src.insight_generator
 
 ## Team
 
-Built by:
-Rishabh Kumar | 24B2419
-Subodh Patel | 24B2509
-Dhruva Reddy | 24B2433
-Abhijeet Singh | 24B2468
+Built by: <br>
+Rishabh Kumar | 24B2419 <br>
+Subodh Patel | 24B2509 <br>
+Dhruva Reddy | 24B2433 <br>
+Abhijeet Singh | 24B2468 <br>
 
 ---
 

@@ -12,7 +12,7 @@ InsightX is a conversational analytics system that allows business leaders to qu
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     STREAMLIT UI LAYER                       │
+│                     STREAMLIT UI LAYER                      │
 │   app/main.py               app/ui_components.py            │
 │   • Chat interface          • Dark terminal theme           │
 │   • Session state           • Message bubbles               │
@@ -22,7 +22,7 @@ InsightX is a conversational analytics system that allows business leaders to qu
                            │ user query (str)
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  CONVERSATION MANAGER                        │
+│                  CONVERSATION MANAGER                       │
 │   src/conversation_manager.py                               │
 │   • Turn history storage                                    │
 │   • Active filter persistence across turns                  │
@@ -44,7 +44,7 @@ InsightX is a conversational analytics system that allows business leaders to qu
                            │ parsed_intent (dict)
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  ANALYTICS ENGINE              [PANDAS ONLY] │
+│                  ANALYTICS ENGINE              [PANDAS ONLY]│
 │   src/analytics_engine.py                                   │
 │   • run_query() dispatch to 6 compute functions             │
 │   • _compute_descriptive()                                  │
