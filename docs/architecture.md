@@ -1,10 +1,10 @@
-# InsightX — System Architecture
+# BRAIN-DS — System Architecture
 
 ## 1. Overview
 
-InsightX is a conversational analytics system that allows business leaders to query 250,000 UPI transactions using natural language and receive accurate, explainable insights. The system is built around a strict separation between language understanding, deterministic computation, and narrative generation.
+BRAIN-DS is a conversational analytics system that allows business leaders to query 250,000 UPI transactions using natural language and receive accurate, explainable insights. The system is built on a **Code Interpreter** paradigm — an LLM writes pandas code, which is executed in a secure sandbox, and the results are narrated back in executive-grade language.
 
-**Core architectural principle:** The LLM never computes numbers. All statistics are produced by pandas operating directly on the dataset. The LLM's role is limited to two tasks — parsing the user's intent into a structured format, and converting pre-computed numbers into readable narrative.
+**Core architectural principle:** The LLM generates code, never direct answers. All statistics are produced by pandas executing inside a sandboxed environment. An LLM-as-Judge validates every response before it reaches the user.
 
 ---
 
@@ -15,72 +15,63 @@ InsightX is a conversational analytics system that allows business leaders to qu
 │                     STREAMLIT UI LAYER                      │
 │   app/main.py               app/ui_components.py            │
 │   • Chat interface          • Dark terminal theme           │
-│   • Session state           • Message bubbles               │
-│   • Sample query chips      • Metrics strip                 │
+│   • Session state           • Glassmorphism cards           │
+│   • Sample query chips      • Animated header & sidebar     │
 │   • Follow-up buttons       • Data table expander           │
 └──────────────────────────┬──────────────────────────────────┘
                            │ user query (str)
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  CONVERSATION MANAGER                       │
-│   src/conversation_manager.py                               │
-│   • Turn history storage                                    │
-│   • Active filter persistence across turns                  │
-│   • Follow-up detection (phrase matching)                   │
-│   • Context dict for query parser                           │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ (query, context)
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    QUERY PARSER                  [LLM #1]   │
-│   src/query_parser.py                                       │
-│   • Gemini API call → structured JSON intent                │
-│   • Intent classification (6 types)                         │
-│   • Entity extraction (schema-bound)                        │
-│   • Metric inference                                        │
-│   • Entity normalisation against VALID_VALUES               │
-│   • Fallback intent on parse failure                        │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ parsed_intent (dict)
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  ANALYTICS ENGINE              [PANDAS ONLY]│
-│   src/analytics_engine.py                                   │
-│   • run_query() dispatch to 6 compute functions             │
-│   • _compute_descriptive()                                  │
-│   • _compute_comparative()                                  │
-│   • _compute_temporal()                                     │
-│   • _compute_segmentation()                                 │
-│   • _compute_correlation()                                  │
-│   • _compute_risk()                                         │
-│   • Shared utilities: _apply_filters(), _failure_rate(),    │
-│     _grouped_failure_rate(), _flag_rate(), etc.             │
-│   • Sample size warnings (< 200 threshold)                  │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ analytics_result (dict)
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 INSIGHT GENERATOR               [LLM #2]    │
-│   src/insight_generator.py                                  │
-│   • Gemini API call with pre-computed numbers only          │
-│   • D-S-I-R narrative structure enforcement                 │
-│   • Tone calibration (marginal / notable / significant)     │
-│   • Assumption & warning appending                          │
-│   • Fallback narrative if API unavailable                   │
-│   • Follow-up suggestion generation                         │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ (response, followups)
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
 │                      AGENT                  [ORCHESTRATOR]  │
 │   src/agent.py                                              │
-│   • Detects "why" / diagnostic queries                      │
-│   • Single-pass: parser → engine → narrator                 │
-│   • Agentic: runs pandas across all dimensions              │
-│     ranks by explanatory spread, Gemini synthesises         │
-│   • Model: Gemini 3.1 Pro (synthesis)                       │
+│   • Entry point: run_agent()                                │
+│   • Manages the generate → execute → validate loop          │
+│   • Up to MAX_RETRIES iterations on execution errors        │
+│   • Validates output alignment via code_planner             │
+│   • Calls judge for final quality check                     │
 └──────────────────────────┬──────────────────────────────────┘
-                           │ response (str)
+                           │ user_query + schema + context
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  CODE PLANNER                   [LLM #1]    │
+│   src/code_planner.py                                       │
+│   • generate_analysis_code() — Gemini writes pandas code    │
+│   • fix_code() — LLM corrects code that errored             │
+│   • validate_and_refine() — checks output answers question  │
+│   • generate_narrative() — D-S-I-R executive narrative      │
+│   • generate_followups() — 2–3 follow-up suggestions        │
+│   • get_schema_prompt() — builds full schema description     │
+│   • build_conversation_context() — formats turn history     │
+│   • Model: Gemini 2.5 Flash                                 │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ generated Python code (str)
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     SANDBOX                [RESTRICTED ENV] │
+│   src/sandbox.py                                            │
+│   • execute_code() — runs code against the DataFrame        │
+│   • Restricted builtins (no open, exec, eval, import)       │
+│   • Only pandas, numpy, math, datetime available            │
+│   • 30-second timeout with thread-based enforcement         │
+│   • Captures stdout + result + error                        │
+│   • Handles DataFrame, Series, scalar, dict results         │
+│   • format_result_for_display() — formats for LLM/UI       │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ execution result (dict)
+                           ▼
+                  [If error → fix_code() → retry]
+                  [If success → validate_and_refine()]
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│          NARRATIVE GENERATION                   [LLM #2]    │
+│   src/code_planner.py → generate_narrative()                │
+│   • Receives computed data + code + stdout                  │
+│   • Produces D-S-I-R structured executive narrative         │
+│   • Uses calibrated language for differences                │
+│   • Model: Gemini 2.5 Flash                                 │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ narrative response (str)
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                 JUDGE                        [LLM #3]       │
@@ -90,58 +81,62 @@ InsightX is a conversational analytics system that allows business leaders to qu
 │   • Approves / corrects / appends caveat                    │
 │   • Catches: hallucinated numbers, overclaimed significance,│
 │     fraud language, irrelevant answers                      │
-│   • Model: Gemini 3.1 Pro → falls back to 2.5 Pro           │
+│   • Model: Gemini 3.1 Pro → falls back to 2.5 Pro          │
 │   • Never blocks user if judge itself fails                 │
 └──────────────────────────┬──────────────────────────────────┘
                            │ validated response
                            ▼
-                    Back to UI Layer
+                     Back to UI Layer
 ```
 
 ---
 
 ## 3. Module Descriptions
 
+### `src/agent.py`
+The orchestration layer and main entry point. Receives the user query, loads the DataFrame, builds schema and conversation context, then runs the generate → execute → validate loop. On execution errors, asks the code planner to fix the code (up to `MAX_RETRIES` attempts). On successful execution, validates that the output actually answers the question. Finally calls the narrator and judge before returning the complete result dict.
+
+Key functions: `run_agent()`, `_error_result()`, `format_investigation_trace()`
+
+### `src/code_planner.py`
+The LLM interface layer. All Gemini API calls for code generation, error correction, output validation, narrative generation, and follow-up suggestion happen here. Injects a comprehensive schema description (column names, dtypes, valid values, sample rows) into every prompt to ground the LLM. Includes automatic retry logic for rate-limit (429) errors.
+
+Key functions: `generate_analysis_code()`, `fix_code()`, `validate_and_refine()`, `generate_narrative()`, `generate_followups()`, `get_schema_prompt()`, `build_conversation_context()`
+
+### `src/sandbox.py`
+The security layer. Executes LLM-generated pandas code in a restricted environment. Only whitelisted builtins are available — no file I/O (`open`), no dynamic execution (`exec`, `eval`), no imports, no system access. Code must assign its answer to a `result` variable. Enforces a 30-second timeout using threads. Handles multiple result types (DataFrame, Series, scalar, dict) and converts numpy/pandas types to JSON-safe Python natives.
+
+Key functions: `execute_code()`, `format_result_for_display()`, `_make_json_safe()`
+
+### `src/judge.py`
+The quality validation layer. Every response passes through the judge before reaching the user. Evaluates Relevance, Grounding, Calibration, and Safety on a 1–5 scale. Automatically corrects responses with critical issues or appends caveats for minor ones. Uses Gemini 3.1 Pro with automatic fallback to 2.5 Pro. Never blocks the user if the judge itself fails.
+
+Key functions: `judge_response()`, `format_judge_badge()`, `get_judge_expander_content()`
+
 ### `src/data_loader.py`
-The foundation layer. Loads the CSV once into memory and caches it for the session lifetime. Handles all column renaming (raw CSV has spaces in headers), timestamp parsing (format: `DD-MM-YYYY HH.MM`), and derives the `is_failed` convenience column. Defines all EDA-derived constants (`HIGH_VALUE_THRESHOLD`, `OVERALL_FAILURE_RATE`, etc.) and valid categorical values used for entity validation downstream.
+The foundation layer. Loads the CSV once into memory and caches it for the session lifetime. Handles column renaming, timestamp parsing (`DD-MM-YYYY HH.MM`), and derives convenience columns like `is_failed`. Defines all EDA-derived constants (`HIGH_VALUE_THRESHOLD`, `OVERALL_FAILURE_RATE`, etc.) and valid categorical values used for entity validation.
 
 Key functions: `get_dataframe()`, `get_subset()`, `sample_size_warning()`
 
-### `src/query_parser.py`
-The language understanding layer. Sends the user's query to Gemini with a carefully engineered system prompt that includes the full schema, valid values, and system constants. Instructs the model to return only a structured JSON object — never an answer. Post-processes the response to correct capitalisation issues and remove unrecognised entities. Falls back to `intent: "unknown"` on complete parse failure.
+### `src/conversation_manager.py`
+The memory layer. Maintains conversation state as a `Turn` dataclass list. Tracks active filters, last metric, and code history across turns to enable follow-up queries. Provides context to the code planner so follow-up questions resolve correctly without the user repeating earlier constraints.
 
-Key functions: `parse_query()`, `explain_parse()`
+Key functions: `ConversationManager.add_turn()`, `.get_context()`, `.get_history()`, `.reset()`
+
+### `src/query_parser.py`
+Legacy intent parser. Sends the user's query to Gemini to extract structured JSON intent (intent type, entities, metrics, filters). Used by the analytics engine for structured computation. Retained in the codebase as a fallback path.
 
 ### `src/analytics_engine.py`
-The source of truth. All computation happens here via pandas. A single entry point `run_query()` dispatches to one of six compute functions based on intent type. Every function applies filters via `_apply_filters()`, runs the appropriate aggregation, checks for low sample sizes, and returns a standardised result dict with a `summary`, optional `data` DataFrame, `warning`, and `assumption`.
-
-Key functions: `run_query()`, `_compute_*()`, `_apply_filters()`, `_grouped_failure_rate()`
+Legacy computation engine. Contains six deterministic compute functions dispatched by intent type (descriptive, comparative, temporal, segmentation, correlation, risk). All computation uses pandas. Retained in the codebase as a fallback path.
 
 ### `src/insight_generator.py`
-The narrative layer. Receives the analytics result and builds a prompt that passes only the pre-computed numbers to Gemini, instructing it to produce a D-S-I-R structured response. Tone guidelines in the system prompt ensure the model uses calibrated language (e.g. "marginally" for <0.5pp differences). Has a pure-Python fallback narrative if the API is unavailable.
-
-Key functions: `generate_insight()`, `suggest_followups()`
-
-### `src/conversation_manager.py`
-The memory layer. Maintains conversation state as a Python dataclass (`Turn`) list. Merges active filters across follow-up turns so users don't need to repeat context. Detects follow-up queries via phrase matching. Provides a context dict to `query_parser` and a history list to the Streamlit UI.
-
-Key functions: `ConversationManager.add_turn()`, `.get_context()`, `.get_history()`
+Legacy narrative generator. Receives analytics results and produces D-S-I-R narratives via Gemini. Retained in the codebase as a fallback path.
 
 ### `app/main.py`
-The application entry point. Initialises Streamlit session state, wires the full pipeline together, and manages the render loop. Handles prefilled queries from sample chips and follow-up buttons via `st.session_state.prefilled_query`.
+The application entry point. Initialises Streamlit session state, wires the pipeline through `run_agent()`, and manages the render loop. Handles prefilled queries from sample chips and follow-up buttons.
 
 ### `app/ui_components.py`
-All visual components. Dark terminal aesthetic with amber/gold accents using Bebas Neue (display), Space Mono (metrics), and DM Sans (body). Components include: header bar, welcome screen with sample query chips, user/assistant message bubbles, metrics strip, collapsible data table, follow-up suggestion chips, sidebar with session state display.
-
-### `src/agent.py`
-The orchestration layer. Sits between the query parser and analytics engine. Detects diagnostic or "why" queries via trigger phrase matching and routes them to the agentic loop. The agentic loop runs failure rate analysis across all investigable dimensions deterministically via pandas, ranks dimensions by explanatory spread (negligible / weak / moderate / strong), and passes all findings to Gemini 3.1 Pro for synthesis. Standard queries use the single-pass pipeline unchanged.
-
-Key functions: `run_agent()`, `format_investigation_trace()`
-
-### `src/judge.py`
-The quality validation layer. Every response — single-pass or agentic — passes through the judge before reaching the user. Evaluates Relevance, Grounding, Calibration, and Safety on a 1–5 scale. Automatically corrects responses with critical issues or appends caveats for minor ones. Uses Gemini 3.1 Pro with automatic fallback to 2.5 Pro. Never blocks the user if the judge itself fails — the original response passes through.
-
-Key functions: `judge_response()`, `format_judge_badge()`, `get_judge_expander_content()`
+All visual components. Premium dark analytics dashboard with amber/gold accents using Bebas Neue (display), Space Mono (metrics), and DM Sans (body). Features animated gradient header, glassmorphism response cards, floating orb welcome screen, shimmer loading animation, and polished sidebar with session info, architecture badge, and dataset overview card.
 
 ---
 
@@ -150,54 +145,64 @@ Key functions: `judge_response()`, `format_judge_badge()`, `get_judge_expander_c
 **Query:** *"Compare failure rates for HDFC vs SBI on weekends"*
 
 ```
-1. query_parser.py
-   Input:  "Compare failure rates for HDFC vs SBI on weekends"
-   Output: {
-     "intent": "comparative",
-     "metric": "failure_rate",
-     "filters": {"sender_bank": ["HDFC", "SBI"], "is_weekend": 1},
-     "group_by": "sender_bank",
-     "comparison_values": ["HDFC", "SBI"]
-   }
+1. agent.py → run_agent()
+   - Loads DataFrame via data_loader.get_dataframe()
+   - Builds schema prompt via code_planner.get_schema_prompt(df)
+   - Builds conversation context from prior turns
 
-2. analytics_engine.py → _compute_comparative()
-   - _apply_filters(): filters df to is_weekend=1, skips sender_bank list
-   - df filtered to 71,337 weekend transactions
-   - Further filtered to HDFC and SBI rows only
-   - _grouped_failure_rate(df, "sender_bank") computes:
-       SBI:  919 failed / 17,829 total = 5.15%
-       HDFC: 542 failed / 10,823 total = 5.01%
-   Output: result dict with summary + data DataFrame
+2. code_planner.py → generate_analysis_code()
+   - Sends query + schema + context to Gemini 2.5 Flash
+   - Gemini generates pandas code:
+     weekend_df = df[df['is_weekend'] == 1]
+     banks = weekend_df[weekend_df['sender_bank'].isin(['HDFC', 'SBI'])]
+     result = banks.groupby('sender_bank')['is_failed'].agg(['sum','count'])
+     result['failure_rate'] = (result['sum'] / result['count'] * 100).round(2)
 
-3. insight_generator.py
-   - Prompt contains ONLY the computed numbers above
-   - Gemini produces D-S-I-R narrative using "marginally" (spread = 0.14pp)
-   - Assumption appended: "sender_bank assumed for bank comparison"
+3. sandbox.py → execute_code()
+   - Executes code in restricted environment with only pandas/numpy
+   - Returns: {success: True, result: DataFrame, stdout: "", error: None}
 
-4. conversation_manager.py
-   - Turn recorded with full state
-   - active_filters updated: {sender_bank: [HDFC, SBI], is_weekend: 1}
-   - If next query is "now look at all banks", filters merge correctly
+4. code_planner.py → validate_and_refine()
+   - Checks: does the output answer "Compare failure rates for HDFC vs SBI
+     on weekends"?
+   - If misaligned, generates corrected code and re-executes
+
+5. code_planner.py → generate_narrative()
+   - Receives computed DataFrame + code + stdout
+   - Produces D-S-I-R narrative: "HDFC has a 5.01% failure rate on weekends
+     (542 failed / 10,823 total), compared to SBI's 5.15% (919 / 17,829)..."
+
+6. judge.py → judge_response()
+   - Evaluates narrative against computed data
+   - Checks calibration: 0.14pp spread → must use "marginal"
+   - Approves or corrects
+
+7. conversation_manager.py → add_turn()
+   - Records query, code, result, and response
+   - Updates active context for follow-up queries
 ```
 
 ---
 
 ## 5. Key Design Decisions
 
-### Why not Text-to-SQL?
-Text-to-SQL would require maintaining a database layer and validating generated SQL for safety. Pandas operations on an in-memory 250k-row DataFrame are equivalent in speed, simpler to debug, and allow direct integration with Python-native validation logic.
+### Why Code Interpreter over Structured Intent Parsing?
+The structured intent parser (query_parser → analytics_engine) required manually coding every possible query pattern into six intent types. The code interpreter approach lets the LLM write arbitrary pandas code, handling any question the user can think of — including novel multi-step analyses that don't fit neatly into predefined categories.
 
-### Why two separate LLM calls?
-Separating parsing (LLM #1) from narration (LLM #2) enforces the core principle that computation is never LLM-dependent. If both calls were combined, there would be no clean boundary preventing the model from mixing recalled statistics with computed ones.
+### Why a Sandbox?
+LLM-generated code cannot be trusted to run unrestricted. The sandbox removes access to file I/O, network calls, imports, and system functions. Only data analysis builtins (pandas, numpy, math) are available, with a 30-second timeout to prevent infinite loops.
 
-### Why simple phrase-matching for follow-up detection?
-A classifier or embedding-based approach would introduce a third model call and new failure modes. The phrase list covers all realistic follow-up patterns for this domain with no latency overhead.
+### Why a Validate-and-Refine Step?
+LLMs sometimes generate code that runs without error but doesn't actually answer the question (e.g., computing total amount when asked for failure rate). The validation step catches these semantic mismatches and triggers a code correction before narrating.
 
-### Why module-level DataFrame caching?
-Streamlit reruns the entire script on every user interaction. Without caching, the 250k-row CSV would be re-read from disk on every query. The module-level `_df_cache` in `data_loader.py` ensures it is read exactly once per session.
+### Why Separate Code Generation from Narrative?
+Separating code generation (LLM #1) from narration (LLM #2) enforces the principle that all numbers come from deterministic pandas execution, not from the model's memory. The narrator only sees computed results.
 
-### Why hardcoded constants rather than computing baselines live?
-The EDA-derived constants (`OVERALL_FAILURE_RATE = 4.95`, `HIGH_VALUE_THRESHOLD = 3236`, etc.) serve as ground truth anchors. Computing them fresh on each response would be marginally slower and, more importantly, would obscure the validation relationship between the analytics engine outputs and the EDA baselines.
+### Why an LLM Judge?
+Automated quality validation catches hallucinated numbers, overclaimed significance, and unsafe fraud language before they reach the user. The judge never blocks — if it fails, the original response passes through unchanged.
+
+### Why Module-Level DataFrame Caching?
+Streamlit reruns the entire script on every user interaction. Without caching, the 250k-row CSV would be re-read from disk on every query. The module-level cache in `data_loader.py` ensures it is read exactly once per session.
 
 ---
 
@@ -207,11 +212,13 @@ The EDA-derived constants (`OVERALL_FAILURE_RATE = 4.95`, `HIGH_VALUE_THRESHOLD 
 |---|---|---|
 | Language | Python | 3.12 |
 | Data computation | Pandas | 2.x |
-| LLM — Parsing & Narration | Gemini 2.5 Flash | gemini-2.5-flash |
-| LLM — Synthesis & Judge | Gemini 3.1 Pro | gemini-3.1-pro-preview |
+| LLM — Code Generation & Narration | Gemini 2.5 Flash | gemini-2.5-flash |
+| LLM — Judge | Gemini 3.1 Pro | gemini-3.1-pro-preview |
+| LLM — Judge Fallback | Gemini 2.5 Pro | gemini-2.5-pro |
 | UI framework | Streamlit | Latest |
 | API client | google-genai | Latest |
 | Environment | python-dotenv | Latest |
+
 ---
 
 ## 7. Project Structure
@@ -224,8 +231,7 @@ insightx/
 │   └── ui_components.py         # All visual components & CSS
 │
 ├── data/
-│   ├── raw/                     # Original CSV (gitignored)
-│   └── processed/               # Derived datasets if needed
+│   └── raw/                     # Original CSV (gitignored)
 │
 ├── docs/
 │   ├── approach.md              # Query understanding methodology
@@ -238,16 +244,21 @@ insightx/
 │
 ├── src/
 │   ├── __init__.py
+│   ├── agent.py                 # Orchestrator: generate → execute → narrate
+│   ├── code_planner.py          # LLM code generation & narrative (Gemini 2.5 Flash)
+│   ├── sandbox.py               # Restricted code execution environment
+│   ├── judge.py                 # LLM-as-Judge validation (Gemini 3.1 Pro)
 │   ├── data_loader.py           # Data loading, caching, constants
-│   ├── query_parser.py          # NL → intent (Gemini 2.5 Flash)
-│   ├── analytics_engine.py      # All computation (pandas)
-│   ├── insight_generator.py     # Results → narrative (Gemini 2.5 Flash)
-│   ├── conversation_manager.py  # Conversation state
-│   ├── agent.py                 # Agentic execution loop (Gemini 3.1 Pro)
-│   └── judge.py                 # LLM-as-Judge validation (Gemini 3.1 Pro)
+│   ├── conversation_manager.py  # Conversation state & follow-up handling
+│   ├── query_parser.py          # [Legacy] NL → intent (Gemini 2.5 Flash)
+│   ├── analytics_engine.py      # [Legacy] Deterministic computation (pandas)
+│   └── insight_generator.py     # [Legacy] Results → narrative (Gemini 2.5 Flash)
 │
 ├── tests/
-│   └── sample_queries.json      # 15 sample queries + responses
+│   ├── sample_queries.json      # 15 sample queries + responses
+│   ├── test_e2e.py              # End-to-end pipeline tests
+│   ├── test_sandbox.py          # Sandbox security & execution tests
+│   └── test_reproduce.py        # Reproducibility tests
 │
 ├── .env                         # API keys (gitignored)
 ├── .env.example                 # Key template for teammates
@@ -258,10 +269,25 @@ insightx/
 
 ---
 
-## 8. Limitations
+## 8. Security Model
 
-- **Synthetic data uniformity:** Failure rates differ by less than 0.5pp across most dimensions, limiting the drama of insights. The system reports this honestly rather than exaggerating differences.
+The sandbox enforces the following restrictions on LLM-generated code:
+
+| Category | Allowed | Blocked |
+|---|---|---|
+| Builtins | `int`, `float`, `str`, `list`, `dict`, `len`, `range`, `sorted`, `min`, `max`, `sum`, `abs`, `round`, `enumerate`, `zip`, `map`, `filter`, `print` | `open`, `exec`, `eval`, `compile`, `__import__`, `globals`, `locals`, `exit`, `quit` |
+| Libraries | `pandas` (as `pd`), `numpy` (as `np`), `math`, `datetime` | All other imports blocked |
+| Execution | 30-second timeout | Infinite loops killed |
+| File I/O | None | All file operations blocked |
+| Network | None | All network access blocked |
+
+---
+
+## 9. Limitations
+
+- **Synthetic data uniformity:** Failure rates differ by less than 0.5pp across most dimensions, limiting the drama of insights. The system reports this honestly.
 - **No forecasting:** All insights are descriptive. No time-series modelling or predictive capability.
-- **Fraud flag sparsity:** Only 480 flagged transactions (0.19%) means sub-segment fraud analysis has very small sample sizes. The system warns on segments below 200 transactions.
+- **Fraud flag sparsity:** Only 480 flagged transactions (0.19%) means sub-segment fraud analysis has very small sample sizes.
 - **10 states only:** The dataset covers 10 Indian states. Geographic insights are limited to this scope.
-- **No causal inference:** Near-zero correlations across all numeric fields mean no causal claims are made or warranted.
+- **Code execution risk:** Despite sandbox restrictions, LLM-generated code carries inherent risk. The whitelist approach minimises this.
+- **API rate limits:** Free-tier Gemini API has request quotas. The retry-with-backoff logic in `code_planner.py` mitigates transient 429 errors.

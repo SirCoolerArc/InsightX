@@ -6,16 +6,13 @@ Entry point for the InsightX conversational analytics system.
 Run from project root:
     streamlit run app/main.py
 
-Architecture:
+Architecture (v3 — Code Interpreter):
     User Input
-        → agent.run_agent()                [decides: single-pass or agentic loop]
-             ├─ Single pass:
-             │    query_parser → analytics_engine → insight_generator
-             └─ Agentic loop:
-                  query_parser → analytics_engine (step 1)
-                  → Gemini plans next step
-                  → analytics_engine (step 2..N)
-                  → Gemini synthesises all findings
+        → agent.run_agent()                [code interpreter loop]
+             ├─ code_planner generates pandas code
+             ├─ sandbox executes code safely
+             ├─ self-correction loop (fix errors / refine)
+             └─ narrative generation (D-S-I-R)
         → conversation_manager.add_turn()  [update state]
         → ui_components.*                  [render to screen]
 """
@@ -28,7 +25,7 @@ import streamlit as st
 
 # ── Page config — must be first Streamlit call ──
 st.set_page_config(
-    page_title="InsightX — Leadership Analytics",
+    page_title="BRAIN-DS — Leadership Analytics",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -61,13 +58,6 @@ def init_session():
         st.session_state.cm = ConversationManager()
     if "messages" not in st.session_state:
         st.session_state.messages = []
-        # messages format: list of dicts with keys:
-        # role: "user" | "assistant"
-        # content: str
-        # result: dict (primary analytics result, assistant only)
-        # followups: list[str] (assistant only)
-        # mode: "single_pass" | "agentic"
-        # steps: list[dict] (investigation steps, agentic only)
     if "prefilled_query" not in st.session_state:
         st.session_state.prefilled_query = None
 
@@ -78,7 +68,7 @@ def init_session():
 
 def process_query(user_input: str) -> tuple[str, dict, list[str], str, list, dict]:
     """
-    Run the full pipeline for a user query via the agent.
+    Run the full code interpreter pipeline for a user query.
 
     Returns
     -------
@@ -95,8 +85,15 @@ def process_query(user_input: str) -> tuple[str, dict, list[str], str, list, dic
     mode      = agent_result["mode"]
     steps     = agent_result["steps"]
 
-    parsed = steps[0]["parsed"] if steps else {}
-    cm.add_turn(user_input, parsed, result, response)
+    # Record this turn with code history for follow-ups
+    cm.add_turn(
+        user_query=user_input,
+        parsed_intent={},
+        analytics_result=result,
+        insight_response=response,
+        code=agent_result.get("code", ""),
+        result_summary=result.get("summary", "") if isinstance(result, dict) else "",
+    )
 
     return response, result, followups, mode, steps, agent_result
 
@@ -115,9 +112,12 @@ def render_history():
                 msg["content"],
                 result=msg.get("result"),
             )
-            # Show metrics strip for assistant messages
-            if msg.get("result") and msg["result"].get("success"):
-                render_metrics_strip(msg["result"])
+
+            # Show generated code in expander
+            code = msg.get("code", "")
+            if code:
+                with st.expander("🐍 Generated Code", expanded=False):
+                    st.code(code, language="python")
 
             # Show judge badge + expander if judge ran
             verdict = msg.get("verdict", {})
@@ -131,12 +131,12 @@ def render_history():
                 with st.expander("⚖️ Quality verification", expanded=False):
                     st.markdown(get_judge_expander_content(verdict))
 
-            # Show agentic investigation trace if available
-            if msg.get("mode") == "agentic" and msg.get("steps"):
+            # Show investigation trace if available
+            if msg.get("steps"):
                 trace = format_investigation_trace(msg["steps"])
                 if trace:
                     with st.expander(
-                        f"🔍 Investigation trace ({len(msg['steps'])} steps)",
+                        f"🔍 Execution trace ({len(msg['steps'])} steps)",
                         expanded=False
                     ):
                         st.markdown(trace)
@@ -181,7 +181,6 @@ def main():
     st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Chat Input ──
-    # Handle prefilled queries from sample chips and follow-up buttons
     prefilled = st.session_state.get("prefilled_query")
     if prefilled:
         st.session_state.prefilled_query = None
@@ -195,7 +194,7 @@ def main():
         key="chat_input",
     )
 
-    # Determine final input (chat box takes precedence over prefilled)
+    # Determine final input
     final_input = chat_input or user_input
 
     if final_input and final_input.strip():
@@ -207,7 +206,7 @@ def main():
             "content": query,
         })
 
-        # Show thinking indicator while processing
+        # Process the query
         with st.spinner(""):
             render_thinking()
             try:
@@ -222,16 +221,19 @@ def main():
                     "mode": mode,
                     "steps": steps,
                     "verdict": agent_result.get("verdict", {}),
+                    "code": agent_result.get("code", ""),
                 })
 
             except Exception as e:
+                import traceback
+                traceback.print_exc()  # Print full traceback to terminal
                 error_msg = f"Something went wrong: {str(e)}"
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": error_msg,
                     "result": None,
                     "followups": [],
-                    "mode": "single_pass",
+                    "mode": "code_interpreter",
                     "steps": [],
                 })
 

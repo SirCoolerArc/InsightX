@@ -85,6 +85,7 @@ class ConversationManager:
         self._last_segment: Optional[str] = None
         self._last_group_by: Optional[str] = None
         self._turn_count: int = 0
+        self._code_history: list[dict] = []  # tracks code + results for follow-ups
 
     # -----------------------------------------------------------------------
     # CORE METHODS
@@ -96,6 +97,8 @@ class ConversationManager:
         parsed_intent: dict,
         analytics_result: dict,
         insight_response: str,
+        code: str = "",
+        result_summary: str = "",
     ) -> None:
         """
         Record a completed conversation turn.
@@ -112,14 +115,21 @@ class ConversationManager:
         )
         self._history.append(turn)
 
+        # Track code history for follow-up context
+        if code:
+            self._code_history.append({
+                "query": user_query,
+                "code": code,
+                "result_summary": result_summary,
+            })
+
         # Update active state from this turn
         self._update_state(turn)
 
     def get_context(self) -> dict:
         """
         Return the current conversation context dict.
-        This is passed to query_parser.parse_query() to help resolve
-        follow-up queries against prior conversation state.
+        Includes code history for the code interpreter pipeline.
         """
         return {
             "active_filters": self._active_filters.copy(),
@@ -128,6 +138,7 @@ class ConversationManager:
             "last_group_by": self._last_group_by,
             "turn_count": self._turn_count,
             "is_followup": self._is_followup_likely(),
+            "history": self._code_history[-3:],  # last 3 code turns for context
         }
 
     def get_history(self) -> list[dict]:
@@ -165,6 +176,7 @@ class ConversationManager:
         self._last_segment = None
         self._last_group_by = None
         self._turn_count = 0
+        self._code_history = []
 
     # -----------------------------------------------------------------------
     # STATE MANAGEMENT
@@ -194,10 +206,11 @@ class ConversationManager:
 
         # Track the most prominent segment from the result
         summary = turn.analytics_result.get("summary", {})
-        if "highest" in summary:
-            self._last_segment = summary["highest"].get("segment")
-        elif "top_segment" in summary:
-            self._last_segment = summary.get("top_segment")
+        if isinstance(summary, dict):
+            if "highest" in summary:
+                self._last_segment = summary["highest"].get("segment")
+            elif "top_segment" in summary:
+                self._last_segment = summary.get("top_segment")
 
     def _is_followup_likely(self) -> bool:
         """

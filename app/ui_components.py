@@ -1,16 +1,17 @@
 """
-ui_components.py — InsightX Streamlit UI Components
-====================================================
-Reusable UI building blocks for the InsightX chat interface.
+ui_components.py — BRAIN-DS Streamlit UI Components (v2)
+=========================================================
+Reusable UI building blocks for the BRAIN-DS chat interface.
 Handles all styling, custom HTML/CSS, and component rendering.
 
-Design direction: Dark, data-terminal aesthetic with amber/gold accents.
-Feels like a Bloomberg terminal meets modern AI assistant.
-Professional, dense, and trustworthy — not consumer chatbot.
+Design direction: Premium dark analytics dashboard with amber/gold accents.
+Glassmorphism, micro-animations, and data-terminal DNA.
+Professional, immersive, and trustworthy.
 """
 
 import streamlit as st
 import pandas as pd
+import hashlib
 
 
 # ---------------------------------------------------------------------------
@@ -22,35 +23,45 @@ def inject_global_css():
     st.markdown("""
     <style>
     /* ── Google Fonts ── */
-    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600&family=Bebas+Neue&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600;700&family=Bebas+Neue&family=JetBrains+Mono:wght@400;500&display=swap');
 
     /* ── Root Variables ── */
     :root {
-        --bg-primary:     #0a0a0f;
-        --bg-secondary:   #111118;
-        --bg-card:        #16161f;
-        --bg-input:       #1c1c28;
+        --bg-primary:     #08080d;
+        --bg-secondary:   #0e0e16;
+        --bg-card:        #13131e;
+        --bg-input:       #1a1a28;
+        --bg-glass:       rgba(19, 19, 30, 0.7);
         --accent-gold:    #f0a500;
         --accent-amber:   #ff8c00;
+        --accent-warm:    #e8952a;
         --accent-dim:     #7a5c00;
-        --text-primary:   #e8e8f0;
-        --text-secondary: #8888aa;
-        --text-muted:     #555570;
+        --accent-glow:    #f0a50030;
+        --text-primary:   #eaeaf4;
+        --text-secondary: #9898b8;
+        --text-muted:     #55557a;
         --success:        #00d4aa;
+        --success-dim:    #00d4aa20;
         --danger:         #ff4757;
-        --border:         #2a2a3a;
-        --border-accent:  #f0a50040;
-        --glow:           #f0a50020;
+        --info:           #5b8def;
+        --border:         #222238;
+        --border-light:   #2e2e48;
+        --border-accent:  #f0a50030;
+        --radius-sm:      8px;
+        --radius-md:      12px;
+        --radius-lg:      16px;
+        --radius-xl:      20px;
     }
 
     /* ── App Background ── */
     .stApp {
         background-color: var(--bg-primary);
         background-image:
-            radial-gradient(ellipse 80% 50% at 50% -10%, #f0a50008 0%, transparent 60%),
-            repeating-linear-gradient(0deg, transparent, transparent 40px, #ffffff03 40px, #ffffff03 41px),
-            repeating-linear-gradient(90deg, transparent, transparent 40px, #ffffff02 40px, #ffffff02 41px);
-        font-family: 'DM Sans', sans-serif;
+            radial-gradient(ellipse 70% 40% at 50% -5%, #f0a50006 0%, transparent 60%),
+            radial-gradient(ellipse 50% 30% at 80% 110%, #5b8def04 0%, transparent 60%),
+            repeating-linear-gradient(0deg, transparent, transparent 60px, #ffffff02 60px, #ffffff02 61px),
+            repeating-linear-gradient(90deg, transparent, transparent 60px, #ffffff01 60px, #ffffff01 61px);
+        font-family: 'DM Sans', -apple-system, sans-serif;
         color: var(--text-primary);
     }
 
@@ -63,24 +74,72 @@ def inject_global_css():
     }
 
     /* ── Scrollbar ── */
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: var(--bg-primary); }
-    ::-webkit-scrollbar-thumb { background: var(--accent-dim); border-radius: 2px; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--accent-dim);
+    }
 
     /* ── Chat Input ── */
+    .stChatInput,
+    .stChatInput *,
+    [data-testid="stChatInput"],
+    [data-testid="stChatInput"] *,
+    [data-testid="stChatInputContainer"],
+    [data-testid="stChatInputContainer"] * {
+        background: #13131e !important;
+        background-color: #13131e !important;
+        border-color: #222238 !important;
+        color: #eaeaf4 !important;
+    }
     .stChatInput {
-        background: var(--bg-input) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: 12px !important;
+        border: 1px solid #222238 !important;
+        border-radius: var(--radius-md) !important;
+        transition: border-color 0.3s ease !important;
+    }
+    .stChatInput:focus-within {
+        border-color: var(--accent-gold) !important;
+        box-shadow: 0 0 0 2px var(--accent-glow) !important;
     }
     .stChatInput textarea {
-        color: var(--text-primary) !important;
+        color: #eaeaf4 !important;
         font-family: 'DM Sans', sans-serif !important;
         font-size: 15px !important;
         background: transparent !important;
+        caret-color: var(--accent-gold) !important;
+        -webkit-text-fill-color: #eaeaf4 !important;
     }
     .stChatInput textarea::placeholder {
-        color: var(--text-muted) !important;
+        color: #55557a !important;
+        -webkit-text-fill-color: #55557a !important;
+    }
+    /* Force dark bottom bar */
+    [data-testid="stBottom"],
+    [data-testid="stBottom"] *,
+    [data-testid="stBottomBlockContainer"],
+    [data-testid="stBottomBlockContainer"] * {
+        background: #08080d !important;
+        background-color: #08080d !important;
+    }
+    /* Re-apply input box bg on top of bottom bar */
+    [data-testid="stBottom"] .stChatInput,
+    [data-testid="stBottom"] .stChatInput *,
+    [data-testid="stBottom"] [data-testid="stChatInput"],
+    [data-testid="stBottom"] [data-testid="stChatInput"] * {
+        background: #13131e !important;
+        background-color: #13131e !important;
+    }
+    /* Send button */
+    .stChatInput button,
+    [data-testid="stChatInput"] button {
+        background: linear-gradient(135deg, #f0a500, #ff8c00) !important;
+        color: #08080d !important;
+        border: none !important;
+        border-radius: 8px !important;
     }
 
     /* ── Chat Messages ── */
@@ -92,20 +151,26 @@ def inject_global_css():
 
     /* ── Buttons ── */
     .stButton > button {
-        background: transparent !important;
+        background: var(--bg-card) !important;
         border: 1px solid var(--border) !important;
         color: var(--text-secondary) !important;
         font-family: 'DM Sans', sans-serif !important;
         font-size: 13px !important;
-        border-radius: 20px !important;
-        padding: 6px 14px !important;
-        transition: all 0.2s ease !important;
+        border-radius: var(--radius-xl) !important;
+        padding: 8px 16px !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
         white-space: nowrap !important;
+        backdrop-filter: blur(8px) !important;
     }
     .stButton > button:hover {
         border-color: var(--accent-gold) !important;
         color: var(--accent-gold) !important;
-        background: var(--glow) !important;
+        background: var(--accent-glow) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 16px var(--accent-glow) !important;
+    }
+    .stButton > button:active {
+        transform: translateY(0px) !important;
     }
 
     /* ── Sidebar ── */
@@ -122,20 +187,26 @@ def inject_global_css():
     .stDataFrame {
         background: var(--bg-card) !important;
         border: 1px solid var(--border) !important;
-        border-radius: 8px !important;
+        border-radius: var(--radius-sm) !important;
     }
 
     /* ── Metric Cards ── */
     [data-testid="metric-container"] {
         background: var(--bg-card) !important;
         border: 1px solid var(--border) !important;
-        border-radius: 10px !important;
-        padding: 12px !important;
+        border-radius: var(--radius-md) !important;
+        padding: 14px !important;
+        transition: border-color 0.2s ease !important;
+    }
+    [data-testid="metric-container"]:hover {
+        border-color: var(--border-light) !important;
     }
     [data-testid="metric-container"] label {
-        color: var(--text-secondary) !important;
-        font-size: 12px !important;
+        color: var(--text-muted) !important;
+        font-size: 11px !important;
         font-family: 'Space Mono', monospace !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
     }
     [data-testid="metric-container"] [data-testid="stMetricValue"] {
         color: var(--accent-gold) !important;
@@ -147,13 +218,30 @@ def inject_global_css():
         background: var(--bg-card) !important;
         color: var(--text-secondary) !important;
         font-size: 13px !important;
+        font-family: 'DM Sans', sans-serif !important;
         border: 1px solid var(--border) !important;
-        border-radius: 8px !important;
+        border-radius: var(--radius-sm) !important;
+        transition: all 0.2s ease !important;
+    }
+    .streamlit-expanderHeader:hover {
+        border-color: var(--border-light) !important;
+        color: var(--text-primary) !important;
     }
     .streamlit-expanderContent {
         background: var(--bg-card) !important;
         border: 1px solid var(--border) !important;
         border-top: none !important;
+        border-radius: 0 0 var(--radius-sm) var(--radius-sm) !important;
+    }
+
+    /* ── Code blocks inside expanders ── */
+    .stCodeBlock {
+        border-radius: var(--radius-sm) !important;
+    }
+    pre {
+        background: #0c0c14 !important;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius-sm) !important;
     }
 
     /* ── Divider ── */
@@ -165,6 +253,46 @@ def inject_global_css():
         color: var(--text-primary) !important;
         border: 1px solid var(--border) !important;
     }
+
+    /* ── Animations ── */
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+    @keyframes pulse-glow {
+        0%, 100% { opacity: 1; box-shadow: 0 0 12px #f0a50020; }
+        50% { opacity: 0.7; box-shadow: 0 0 24px #f0a50050; }
+    }
+    @keyframes pulse-dot {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+    @keyframes spin-slow {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-4px); }
+    }
+    @keyframes gradient-shift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+    @keyframes typing-dots {
+        0%   { content: '.'; }
+        33%  { content: '..'; }
+        66%  { content: '...'; }
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -174,54 +302,27 @@ def inject_global_css():
 # ---------------------------------------------------------------------------
 
 def render_header():
-    """Render the top header bar."""
-    st.markdown("""
-    <div style="
-        background: linear-gradient(135deg, #111118 0%, #16161f 100%);
-        border-bottom: 1px solid #2a2a3a;
-        padding: 18px 40px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 0;
-    ">
-        <div style="display:flex; align-items:center; gap:14px;">
-            <div style="
-                width: 38px; height: 38px;
-                background: linear-gradient(135deg, #f0a500, #ff8c00);
-                border-radius: 10px;
-                display: flex; align-items: center; justify-content: center;
-                font-size: 18px;
-                box-shadow: 0 0 20px #f0a50030;
-            ">⚡</div>
-            <div>
-                <div style="
-                    font-family: 'Bebas Neue', sans-serif;
-                    font-size: 26px;
-                    letter-spacing: 3px;
-                    color: #e8e8f0;
-                    line-height: 1;
-                ">INSIGHTX</div>
-                <div style="
-                    font-family: 'Space Mono', monospace;
-                    font-size: 10px;
-                    color: #f0a500;
-                    letter-spacing: 2px;
-                    margin-top: 2px;
-                ">LEADERSHIP ANALYTICS · TECHFEST IIT BOMBAY</div>
-            </div>
-        </div>
-        <div style="
-            font-family: 'Space Mono', monospace;
-            font-size: 11px;
-            color: #555570;
-            text-align: right;
-        ">
-            <div style="color: #00d4aa;">● LIVE</div>
-            <div>250,000 TRANSACTIONS</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    """Render the top header bar with animated gradient and status."""
+    st.markdown("""<div style="background:linear-gradient(135deg,#0e0e16 0%,#13131e 50%,#0e0e16 100%);border-bottom:1px solid #222238;padding:16px 40px;display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden;">
+<div style="position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent 0%,#f0a500 20%,#ff8c00 50%,#f0a500 80%,transparent 100%);background-size:200% 100%;animation:gradient-shift 4s ease-in-out infinite;"></div>
+<div style="display:flex;align-items:center;gap:14px;">
+<div style="width:40px;height:40px;background:linear-gradient(135deg,#f0a500,#ff8c00);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 0 24px #f0a50030,0 4px 12px #00000040;animation:float 3s ease-in-out infinite;">⚡</div>
+<div>
+<div style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:4px;color:#eaeaf4;line-height:1;text-shadow:0 0 20px #f0a50015;">BRAIN-DS</div>
+<div style="font-family:'Space Mono',monospace;font-size:10px;color:#f0a500;letter-spacing:2px;margin-top:3px;opacity:0.85;">LEADERSHIP ANALYTICS &middot; TECHFEST IIT BOMBAY</div>
+</div>
+</div>
+<div style="display:flex;align-items:center;gap:16px;font-family:'Space Mono',monospace;font-size:11px;">
+<div style="display:flex;align-items:center;gap:6px;background:#00d4aa10;border:1px solid #00d4aa25;border-radius:20px;padding:4px 12px;">
+<div style="width:6px;height:6px;background:#00d4aa;border-radius:50%;animation:pulse-dot 2s ease-in-out infinite;box-shadow:0 0 6px #00d4aa60;"></div>
+<span style="color:#00d4aa;font-size:10px;letter-spacing:1px;">LIVE</span>
+</div>
+<div style="color:#55557a;text-align:right;">
+<div style="color:#9898b8;">250K TRANSACTIONS</div>
+<div style="font-size:9px;">JAN&ndash;DEC 2024</div>
+</div>
+</div>
+</div>""", unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -229,62 +330,40 @@ def render_header():
 # ---------------------------------------------------------------------------
 
 def render_welcome():
-    """Render the welcome screen shown before any queries."""
-    st.markdown("""
-    <div style="
-        max-width: 720px;
-        margin: 60px auto 0;
-        padding: 0 24px;
-        text-align: center;
-    ">
-        <div style="
-            font-family: 'Bebas Neue', sans-serif;
-            font-size: 52px;
-            letter-spacing: 4px;
-            color: #e8e8f0;
-            line-height: 1;
-            margin-bottom: 12px;
-        ">ASK YOUR DATA</div>
-        <div style="
-            font-family: 'DM Sans', sans-serif;
-            font-size: 16px;
-            color: #8888aa;
-            font-weight: 300;
-            margin-bottom: 48px;
-            line-height: 1.6;
-        ">
-            Conversational analytics for 250,000 UPI transactions.<br>
-            Ask questions in plain English. Get executive-grade insights.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    """Render the welcome screen with animated hero and query cards."""
+    st.markdown("""<div style="max-width:780px;margin:50px auto 0;padding:0 24px;text-align:center;animation:fadeInUp 0.6s ease-out;">
+<div style="width:80px;height:80px;margin:0 auto 28px;background:linear-gradient(135deg,#f0a500,#ff8c00);border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 0 60px #f0a50025,0 8px 32px #00000040;animation:float 3s ease-in-out infinite;">⚡</div>
+<div style="font-family:'Bebas Neue',sans-serif;font-size:56px;letter-spacing:5px;color:#eaeaf4;line-height:1;margin-bottom:16px;">ASK YOUR DATA</div>
+<div style="font-family:'DM Sans',sans-serif;font-size:17px;color:#9898b8;font-weight:300;margin-bottom:12px;line-height:1.7;">
+Conversational analytics for <b style="color:#f0a500;">250,000</b> UPI transactions.<br>
+Ask questions in plain English. Get executive-grade insights.
+</div>
+<div style="display:inline-flex;align-items:center;gap:6px;background:#13131e;border:1px solid #222238;border-radius:20px;padding:5px 14px;margin-bottom:48px;font-family:'Space Mono',monospace;font-size:10px;color:#55557a;letter-spacing:1px;">
+<span style="color:#5b8def;">&bull;</span> POWERED BY GEMINI &middot; CODE INTERPRETER
+</div>
+</div>""", unsafe_allow_html=True)
 
-    # Sample query chips
-    st.markdown("""
-    <div style="max-width: 720px; margin: 0 auto; padding: 0 24px;">
-        <div style="
-            font-family: 'Space Mono', monospace;
-            font-size: 10px;
-            color: #555570;
-            letter-spacing: 2px;
-            margin-bottom: 16px;
-        ">TRY ASKING</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Section label
+    st.markdown("""<div style="max-width:780px;margin:0 auto;padding:0 24px;">
+<div style="font-family:'Space Mono',monospace;font-size:10px;color:#55557a;letter-spacing:2px;margin-bottom:14px;display:flex;align-items:center;gap:10px;">
+<span>TRY ASKING</span>
+<div style="flex:1;height:1px;background:linear-gradient(90deg,#222238,transparent);"></div>
+</div>
+</div>""", unsafe_allow_html=True)
 
     sample_questions = [
-        "Which transaction type has the highest failure rate?",
-        "Compare failure rates for HDFC vs SBI on weekends",
-        "What are the peak transaction hours?",
-        "Which age group uses P2P most on weekends?",
-        "What % of high-value transactions are flagged?",
-        "Is there a relationship between network type and failures?",
+        ("📊", "Which transaction type has the highest failure rate?"),
+        ("🏦", "Compare failure rates for HDFC vs SBI on weekends"),
+        ("🕐", "What are the peak transaction hours?"),
+        ("👥", "Which age group uses P2P most on weekends?"),
+        ("⚠️", "What % of high-value transactions are flagged?"),
+        ("📡", "Is there a relationship between network type and failures?"),
     ]
 
     cols = st.columns(2)
-    for i, q in enumerate(sample_questions):
+    for i, (icon, q) in enumerate(sample_questions):
         with cols[i % 2]:
-            if st.button(q, key=f"sample_{i}"):
+            if st.button(f"{icon}  {q}", key=f"sample_{i}", use_container_width=True):
                 st.session_state.prefilled_query = q
                 st.rerun()
 
@@ -294,24 +373,27 @@ def render_welcome():
 # ---------------------------------------------------------------------------
 
 def render_user_message(message: str):
-    """Render a user message bubble."""
+    """Render a user message bubble with subtle animation."""
+    msg_hash = hashlib.md5(message.encode()).hexdigest()[:8]
     st.markdown(f"""
     <div style="
         display: flex;
         justify-content: flex-end;
-        margin: 20px 0 8px;
+        margin: 24px 0 8px;
         padding: 0 40px;
+        animation: fadeIn 0.3s ease-out;
     ">
         <div style="
-            background: linear-gradient(135deg, #1e1e2e, #252535);
-            border: 1px solid #2a2a3a;
+            background: linear-gradient(135deg, #1a1a2e, #22223a);
+            border: 1px solid #2e2e48;
             border-radius: 16px 16px 4px 16px;
-            padding: 12px 18px;
+            padding: 14px 20px;
             max-width: 70%;
             font-family: 'DM Sans', sans-serif;
             font-size: 15px;
-            color: #e8e8f0;
-            line-height: 1.5;
+            color: #eaeaf4;
+            line-height: 1.6;
+            box-shadow: 0 2px 12px #00000020;
         ">{message}</div>
     </div>
     """, unsafe_allow_html=True)
@@ -323,11 +405,10 @@ def render_user_message(message: str):
 
 def render_assistant_response(response: str, result: dict = None):
     """
-    Render the assistant's insight response with optional data table.
+    Render the assistant's insight response with glassmorphism card.
     """
-    # Main response bubble
-    # Convert newlines to <br> for HTML rendering
-    formatted = response.replace("\n\n", "</p><p style='margin-top:10px'>").replace("\n", "<br>")
+    # Convert newlines for HTML rendering
+    formatted = response.replace("\n\n", "</p><p style='margin-top:12px'>").replace("\n", "<br>")
 
     st.markdown(f"""
     <div style="
@@ -337,33 +418,36 @@ def render_assistant_response(response: str, result: dict = None):
         padding: 0 40px;
         gap: 12px;
         align-items: flex-start;
+        animation: fadeInUp 0.4s ease-out;
     ">
         <div style="
-            width: 32px; height: 32px; flex-shrink: 0;
+            width: 34px; height: 34px; flex-shrink: 0;
             background: linear-gradient(135deg, #f0a500, #ff8c00);
-            border-radius: 8px;
+            border-radius: 10px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 14px;
-            box-shadow: 0 0 12px #f0a50025;
+            font-size: 16px;
+            box-shadow: 0 0 16px #f0a50020, 0 2px 8px #00000030;
             margin-top: 4px;
         ">⚡</div>
         <div style="
-            background: linear-gradient(135deg, #13131e, #16161f);
-            border: 1px solid #2a2a3a;
+            background: linear-gradient(135deg, #11111c, #15152200);
+            backdrop-filter: blur(12px);
+            border: 1px solid #222238;
             border-left: 3px solid #f0a500;
             border-radius: 4px 16px 16px 16px;
-            padding: 16px 20px;
+            padding: 18px 22px;
             max-width: 80%;
             font-family: 'DM Sans', sans-serif;
             font-size: 15px;
-            color: #d8d8e8;
-            line-height: 1.7;
+            color: #d8d8ec;
+            line-height: 1.75;
+            box-shadow: 0 4px 24px #00000015;
         "><p style='margin:0'>{formatted}</p></div>
     </div>
     """, unsafe_allow_html=True)
 
     # Data table (if available)
-    if result and result.get("data") is not None:
+    if result and isinstance(result, dict) and result.get("data") is not None:
         data = result["data"]
         if isinstance(data, pd.DataFrame) and not data.empty:
             with st.expander("📊 View Data Table", expanded=False):
@@ -375,7 +459,7 @@ def render_assistant_response(response: str, result: dict = None):
 
 
 # ---------------------------------------------------------------------------
-# METRICS STRIP
+# METRICS STRIP  (compatible with new result format)
 # ---------------------------------------------------------------------------
 
 def render_metrics_strip(result: dict):
@@ -384,21 +468,29 @@ def render_metrics_strip(result: dict):
     Only shown when there are clear numerical highlights.
     """
     summary = result.get("summary", {})
-    if not summary:
+    if not summary or not isinstance(summary, dict):
         return
 
     metrics = []
 
     if "highest" in summary and isinstance(summary["highest"], dict):
         h = summary["highest"]
-        metrics.append((h.get("segment", "Highest"), f"{h.get('value', '')}%", "▲ Max"))
+        val = h.get("value", h.get("failure_rate", ""))
+        if val is not None:
+            unit = "%" if isinstance(val, float) and val < 100 else ""
+            metrics.append((str(h.get("segment", "Highest"))[:18], f"{val}{unit}", "▲ Max"))
 
     if "lowest" in summary and isinstance(summary["lowest"], dict):
         l = summary["lowest"]
-        metrics.append((l.get("segment", "Lowest"), f"{l.get('value', '')}%", "▼ Min"))
+        val = l.get("value", l.get("failure_rate", ""))
+        if val is not None:
+            unit = "%" if isinstance(val, float) and val < 100 else ""
+            metrics.append((str(l.get("segment", "Lowest"))[:18], f"{val}{unit}", "▼ Min"))
 
-    if "spread" in summary:
-        metrics.append(("Spread", f"{summary['spread']}pp", "Range"))
+    if "spread" in summary and isinstance(summary.get("spread"), (int, float)):
+        spread = summary["spread"]
+        if spread < 1000:
+            metrics.append(("Spread", f"{spread}pp", "Range"))
 
     if "baseline_failure_rate" in summary:
         metrics.append(("Baseline", f"{summary['baseline_failure_rate']}%", "Overall Avg"))
@@ -429,26 +521,32 @@ def render_metrics_strip(result: dict):
 # ---------------------------------------------------------------------------
 
 def render_followup_suggestions(suggestions: list[str]):
-    """Render clickable follow-up suggestion chips."""
+    """Render clickable follow-up suggestion chips with hover effects."""
     if not suggestions:
         return
 
     st.markdown("""
-    <div style="padding: 4px 40px 0; margin-top: 4px;">
+    <div style="padding: 8px 40px 0; margin-top: 6px;">
         <div style="
             font-family: 'Space Mono', monospace;
             font-size: 10px;
-            color: #555570;
+            color: #55557a;
             letter-spacing: 2px;
-            margin-bottom: 8px;
-        ">EXPLORE FURTHER</div>
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        ">
+            <span>EXPLORE FURTHER</span>
+            <div style="flex:1; height:1px; background: linear-gradient(90deg, #222238, transparent);"></div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
     cols = st.columns(len(suggestions))
     for i, suggestion in enumerate(suggestions):
         with cols[i]:
-            if st.button(f"→ {suggestion}", key=f"followup_{suggestion[:20]}_{i}"):
+            if st.button(f"→ {suggestion}", key=f"followup_{suggestion[:20]}_{i}", use_container_width=True):
                 st.session_state.prefilled_query = suggestion
                 st.rerun()
 
@@ -458,35 +556,57 @@ def render_followup_suggestions(suggestions: list[str]):
 # ---------------------------------------------------------------------------
 
 def render_thinking():
-    """Show an animated thinking indicator while processing."""
+    """Show a premium animated thinking indicator while processing."""
     st.markdown("""
     <div style="
         display: flex;
         align-items: center;
-        gap: 12px;
-        padding: 16px 40px;
+        gap: 14px;
+        padding: 20px 40px;
+        animation: fadeIn 0.3s ease-out;
     ">
         <div style="
-            width: 32px; height: 32px;
+            width: 34px; height: 34px;
             background: linear-gradient(135deg, #f0a500, #ff8c00);
-            border-radius: 8px;
+            border-radius: 10px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 14px;
-            animation: pulse 1.5s ease-in-out infinite;
+            font-size: 16px;
+            animation: pulse-glow 1.8s ease-in-out infinite;
         ">⚡</div>
-        <div style="
-            font-family: 'Space Mono', monospace;
-            font-size: 12px;
-            color: #f0a500;
-            letter-spacing: 1px;
-        ">ANALYSING DATA...</div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <div style="
+                font-family: 'Space Mono', monospace;
+                font-size: 12px;
+                color: #f0a500;
+                letter-spacing: 1px;
+            ">ANALYSING DATA</div>
+            <div style="display: flex; gap: 4px;">
+                <div style="
+                    width: 40px; height: 3px;
+                    background: linear-gradient(90deg, #f0a500, #ff8c00, #f0a500);
+                    background-size: 200% 100%;
+                    animation: shimmer 1.5s ease-in-out infinite;
+                    border-radius: 2px;
+                "></div>
+                <div style="
+                    width: 24px; height: 3px;
+                    background: linear-gradient(90deg, #f0a500, #ff8c00, #f0a500);
+                    background-size: 200% 100%;
+                    animation: shimmer 1.5s ease-in-out infinite 0.3s;
+                    border-radius: 2px;
+                    opacity: 0.6;
+                "></div>
+                <div style="
+                    width: 16px; height: 3px;
+                    background: linear-gradient(90deg, #f0a500, #ff8c00, #f0a500);
+                    background-size: 200% 100%;
+                    animation: shimmer 1.5s ease-in-out infinite 0.6s;
+                    border-radius: 2px;
+                    opacity: 0.3;
+                "></div>
+            </div>
+        </div>
     </div>
-    <style>
-    @keyframes pulse {
-        0%, 100% { opacity: 1; box-shadow: 0 0 12px #f0a50025; }
-        50% { opacity: 0.6; box-shadow: 0 0 25px #f0a50060; }
-    }
-    </style>
     """, unsafe_allow_html=True)
 
 
@@ -495,35 +615,62 @@ def render_thinking():
 # ---------------------------------------------------------------------------
 
 def render_sidebar(cm):
-    """Render the sidebar with session info and controls."""
+    """Render the sidebar with session info, architecture badge, and controls."""
     with st.sidebar:
+        # Brand section
         st.markdown("""
         <div style="
             font-family: 'Bebas Neue', sans-serif;
-            font-size: 20px;
-            letter-spacing: 3px;
-            color: #e8e8f0;
-            padding: 8px 0 4px;
+            font-size: 22px;
+            letter-spacing: 4px;
+            color: #eaeaf4;
+            padding: 8px 0 6px;
         ">SESSION</div>
         <div style="
-            width: 32px; height: 2px;
-            background: linear-gradient(90deg, #f0a500, transparent);
-            margin-bottom: 16px;
+            width: 36px; height: 2px;
+            background: linear-gradient(90deg, #f0a500, #ff8c00, transparent);
+            margin-bottom: 18px;
+            border-radius: 1px;
         "></div>
         """, unsafe_allow_html=True)
 
-        # Turn counter
+        # Turn counter — big and bold
         turns = cm.get_turn_count()
         st.markdown(f"""
         <div style="
-            background: #16161f;
-            border: 1px solid #2a2a3a;
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-bottom: 12px;
+            background: linear-gradient(135deg, #13131e, #18182a);
+            border: 1px solid #222238;
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin-bottom: 14px;
+            position: relative;
+            overflow: hidden;
         ">
-            <div style="font-family:'Space Mono',monospace; font-size:10px; color:#555570; letter-spacing:2px;">QUERIES</div>
-            <div style="font-family:'Space Mono',monospace; font-size:28px; color:#f0a500; margin-top:4px;">{turns:02d}</div>
+            <div style="
+                position: absolute;
+                top: 0; right: 0;
+                width: 60px; height: 60px;
+                background: radial-gradient(circle, #f0a50008, transparent 70%);
+            "></div>
+            <div style="font-family:'Space Mono',monospace; font-size:10px; color:#55557a; letter-spacing:2px;">QUERIES</div>
+            <div style="font-family:'Space Mono',monospace; font-size:32px; color:#f0a500; margin-top:4px; text-shadow: 0 0 20px #f0a50020;">{turns:02d}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Architecture badge
+        st.markdown("""
+        <div style="
+            background: #5b8def10;
+            border: 1px solid #5b8def20;
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 14px;
+        ">
+            <div style="font-family:'Space Mono',monospace; font-size:9px; color:#5b8def; letter-spacing:1.5px; margin-bottom:6px;">ARCHITECTURE</div>
+            <div style="font-family:'DM Sans',sans-serif; font-size:12px; color:#9898b8; line-height:1.6;">
+                Code Interpreter Sandbox<br>
+                <span style="color:#55557a; font-size:11px;">Generate → Execute → Validate → Narrate</span>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -533,16 +680,17 @@ def render_sidebar(cm):
 
         if active_filters:
             st.markdown("""
-            <div style="font-family:'Space Mono',monospace; font-size:10px; color:#555570; letter-spacing:2px; margin-bottom:8px;">ACTIVE CONTEXT</div>
+            <div style="font-family:'Space Mono',monospace; font-size:10px; color:#55557a; letter-spacing:2px; margin-bottom:8px;">ACTIVE CONTEXT</div>
             """, unsafe_allow_html=True)
             for k, v in active_filters.items():
                 st.markdown(f"""
                 <div style="
-                    background: #f0a50010;
-                    border: 1px solid #f0a50030;
+                    background: #f0a50008;
+                    border: 1px solid #f0a50020;
+                    border-left: 2px solid #f0a500;
                     border-radius: 6px;
-                    padding: 6px 10px;
-                    margin-bottom: 4px;
+                    padding: 7px 12px;
+                    margin-bottom: 5px;
                     font-family: 'Space Mono', monospace;
                     font-size: 11px;
                     color: #f0a500;
@@ -560,19 +708,56 @@ def render_sidebar(cm):
 
         st.markdown("---")
 
-        # Dataset info
+        # Dataset info card
         st.markdown("""
-        <div style="font-family:'Space Mono',monospace; font-size:10px; color:#555570; letter-spacing:1px; line-height:2;">
-        DATASET<br>
-        <span style="color:#8888aa;">250,000 transactions</span><br>
-        <span style="color:#8888aa;">Jan–Dec 2024</span><br>
-        <span style="color:#8888aa;">10 states · 8 banks</span><br><br>
-        FAILURE BASELINE<br>
-        <span style="color:#f0a500;">4.95%</span><br><br>
-        HIGH-VALUE (P90)<br>
-        <span style="color:#f0a500;">₹3,236+</span><br><br>
-        FRAUD FLAG RATE<br>
-        <span style="color:#f0a500;">0.19%</span>
+        <div style="
+            background: linear-gradient(135deg, #13131e, #18182a);
+            border: 1px solid #222238;
+            border-radius: 10px;
+            padding: 14px 16px;
+        ">
+            <div style="font-family:'Space Mono',monospace; font-size:9px; color:#55557a; letter-spacing:2px; margin-bottom:10px;">DATASET OVERVIEW</div>
+            <div style="font-family:'Space Mono',monospace; font-size:11px; line-height:2.2;">
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="color:#55557a;">Transactions</span>
+                    <span style="color:#9898b8;">250,000</span>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="color:#55557a;">Period</span>
+                    <span style="color:#9898b8;">Jan–Dec 2024</span>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="color:#55557a;">Coverage</span>
+                    <span style="color:#9898b8;">10 states · 8 banks</span>
+                </div>
+                <div style="height:1px; background:#222238; margin:6px 0;"></div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="color:#55557a;">Failure Rate</span>
+                    <span style="color:#f0a500;">4.95%</span>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="color:#55557a;">P90 Amount</span>
+                    <span style="color:#f0a500;">₹3,236+</span>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="color:#55557a;">Flag Rate</span>
+                    <span style="color:#f0a500;">0.19%</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Footer
+        st.markdown("""
+        <div style="
+            margin-top: 24px;
+            padding-top: 12px;
+            border-top: 1px solid #222238;
+            text-align: center;
+        ">
+            <div style="font-family:'Space Mono',monospace; font-size:9px; color:#33334a; letter-spacing:1px;">
+                BRAIN-DS v3.0 · CODE INTERPRETER
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -582,20 +767,25 @@ def render_sidebar(cm):
 # ---------------------------------------------------------------------------
 
 def render_error(message: str):
-    """Render an error message in the chat."""
+    """Render an error message in the chat with warning styling."""
     st.markdown(f"""
     <div style="
         padding: 0 40px;
         margin: 8px 0;
+        animation: fadeIn 0.3s ease-out;
     ">
         <div style="
-            background: #ff475710;
-            border: 1px solid #ff475740;
+            background: linear-gradient(135deg, #ff475708, #ff475712);
+            border: 1px solid #ff475730;
+            border-left: 3px solid #ff4757;
             border-radius: 8px;
-            padding: 12px 16px;
-            font-family: 'Space Mono', monospace;
-            font-size: 13px;
-            color: #ff4757;
-        ">⚠ {message}</div>
+            padding: 14px 18px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 14px;
+            color: #ff7a85;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        "><span style="font-size:16px;">⚠</span> {message}</div>
     </div>
     """, unsafe_allow_html=True)

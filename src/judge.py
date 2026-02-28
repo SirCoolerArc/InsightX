@@ -210,10 +210,23 @@ def _build_data_context(
             lines.append(f"\nStep {obs.get('step_num', '?')}: {obs.get('query_desc', '')}")
             lines.append(obs.get("data_summary", "No data"))
 
-    # From single-pass result
+    # From code interpreter result (new pipeline)
+    elif result and result.get("raw_output"):
+        lines.append("\nCode interpreter output:")
+        raw = result["raw_output"]
+        if isinstance(raw, str):
+            lines.append(raw[:2000])
+        else:
+            lines.append(json.dumps(raw, indent=2, default=str)[:2000])
+
+    # From single-pass result (legacy)
     elif result and result.get("summary"):
-        lines.append("\nAnalytics result summary:")
-        lines.append(json.dumps(result["summary"], indent=2))
+        summary = result["summary"]
+        if isinstance(summary, str):
+            lines.append(f"\nAnalytics result summary:\n{summary}")
+        else:
+            lines.append("\nAnalytics result summary:")
+            lines.append(json.dumps(summary, indent=2))
         if result.get("data") is not None and hasattr(result["data"], "to_string"):
             lines.append("\nData table:")
             lines.append(result["data"].head(10).to_string(index=False))
@@ -335,8 +348,8 @@ def _summarise_verdict(verdict: dict) -> str:
 
 def format_judge_badge(verdict: dict) -> str:
     """
-    Return a small HTML badge for display in the Streamlit UI.
-    Shows judge approval status next to the response.
+    Return a premium HTML badge for display in the Streamlit UI.
+    Shows judge approval status with visual emphasis.
     """
     if not verdict.get("judge_ran"):
         return ""
@@ -346,25 +359,37 @@ def format_judge_badge(verdict: dict) -> str:
 
     if verdict.get("approved") and avg >= 4:
         color = "#00d4aa"
-        label = f"✓ Verified ({avg:.1f}/5)"
+        bg = "#00d4aa10"
+        icon = "✓"
+        label = f"Verified ({avg:.1f}/5)"
     elif verdict.get("approved"):
         color = "#f0a500"
-        label = f"~ Caveated ({avg:.1f}/5)"
+        bg = "#f0a50010"
+        icon = "~"
+        label = f"Caveated ({avg:.1f}/5)"
     else:
         color = "#ff4757"
-        label = f"✗ Corrected ({avg:.1f}/5)"
+        bg = "#ff475710"
+        icon = "✗"
+        label = f"Corrected ({avg:.1f}/5)"
 
     return f"""
-    <span style="
+    <div style="
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         font-family: 'Space Mono', monospace;
-        font-size: 10px;
+        font-size: 11px;
         color: {color};
-        border: 1px solid {color}40;
-        border-radius: 4px;
-        padding: 2px 8px;
-        margin-left: 10px;
-        vertical-align: middle;
-    ">{label}</span>
+        background: {bg};
+        border: 1px solid {color}30;
+        border-radius: 20px;
+        padding: 4px 14px;
+        box-shadow: 0 0 12px {color}10;
+    ">
+        <span style="font-weight:700;">{icon}</span>
+        <span>{label}</span>
+    </div>
     """
 
 

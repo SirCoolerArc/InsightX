@@ -1,4 +1,4 @@
-# InsightX — Query Understanding & Insight Generation Approach
+# BRAIN-DS — Query Understanding & Insight Generation Approach
 
 ## 1. Dataset Characteristics (EDA-Informed)
 
@@ -22,167 +22,154 @@ The most important finding from EDA is that failure rates are remarkably uniform
 | Merchant Category | 4.59% – 5.10% |
 | Day of Week | 4.77% – 5.10% |
 
-This is a synthetic dataset and this uniformity is a direct consequence of that. The system must report differences accurately and avoid exaggerating them. The largest real differentials exist in bank pairs (Yes Bank → Kotak at 6.59% vs overall 4.95%) and across states (Uttar Pradesh 5.22% vs Telangana 4.71%).
+This is a synthetic dataset and this uniformity is a direct consequence of that. The system must report differences accurately and avoid exaggerating them.
 
 **Amount Distribution**
 - Heavily right-skewed: median ₹629, mean ₹1,312, max ₹42,099
 - High-value threshold defined as P90 = ₹3,236 (used consistently throughout the system)
 - Education transactions have by far the highest average (₹5,134), followed by Shopping (₹2,616)
-- Transport and Entertainment have the lowest averages (₹310 and ₹418 respectively)
 
 **Fraud Flag Reality**
 - Only 480 transactions flagged (0.19%) — extremely sparse
 - Flagged transactions are actually *less* likely to fail (4.38%) than unflagged ones (4.95%)
-- Highest concentration: Recharge 0.24%, Kotak bank 0.25%, age group 18-25 at 0.23%
 - All differences are marginal — fraud flag analysis must always include sample size context
 
 **Transaction Composition**
 - P2P dominates at 45% of volume, P2M at 35%, Bill Payment at 15%, Recharge at 5%
-- 26-35 age group is the largest sender segment (35% of volume, highest avg amount ₹1,326)
+- 26-35 age group is the largest sender segment (35% of volume)
 - Android dominates device usage at 75% of all transactions
-- Maharashtra is the highest volume state (37,427 transactions)
 - Peak transaction hour is 19:00, with a sustained cluster from 17:00–20:00
 
 ---
 
-## 2. Query Understanding Framework
+## 2. Code Interpreter Approach
 
-### 2.1 Intent Classification
+### 2.1 Why Code Interpreter?
 
-Every incoming natural language query is classified into one of six intent types before any computation begins:
+Traditional NLP-to-analytics pipelines require:
+1. Intent classification (mapping queries to predefined categories)
+2. Entity extraction (pulling out specific column values)
+3. Hardcoded computation functions (one per intent type)
 
-| Intent | Trigger Phrases | Example |
-|---|---|---|
-| **Descriptive** | "what is", "how many", "show me" | "What is the average transaction amount?" |
-| **Comparative** | "compare", "vs", "difference between", "which is higher" | "Compare failure rates for HDFC vs SBI" |
-| **Temporal** | "when", "peak", "trend", "during", "hours", "weekend" | "What are peak transaction hours?" |
-| **Segmentation** | "which group", "by age", "broken down", "most frequently" | "Which age group uses P2P most?" |
-| **Correlation** | "relationship", "is there", "does X affect Y", "related to" | "Is network type related to failure rate?" |
-| **Risk** | "flagged", "fraud", "anomalous", "high-value", "risk" | "What % of high-value transactions are flagged?" |
+This limits the system to a fixed set of question patterns. Any novel query that doesn't fit the predefined intents fails silently or returns irrelevant results.
 
-### 2.2 Entity Extraction
+BRAIN-DS uses a **Code Interpreter** approach instead:
 
-Entities are strictly mapped to actual dataset columns. No fields are inferred or invented.
+```
+User Query (natural language)
+    ↓
+LLM generates pandas code (arbitrary, unconstrained)
+    ↓
+Sandbox executes code safely against DataFrame
+    ↓
+LLM narrates the computed results
+    ↓
+LLM Judge validates quality
+```
 
-| Entity Type | Dataset Column | Valid Values |
-|---|---|---|
-| Transaction type | `transaction type` | P2P, P2M, Bill Payment, Recharge |
-| Merchant category | `merchant_category` | Food, Grocery, Fuel, Entertainment, Shopping, Healthcare, Education, Transport, Utilities, Other |
-| Time — hour | `hour_of_day` | 0–23 |
-| Time — day | `day_of_week` | Monday–Sunday |
-| Time — period | `is_weekend` | 0 (weekday), 1 (weekend) |
-| Age group | `sender_age_group` | 18-25, 26-35, 36-45, 46-55, 56+ |
-| State | `sender_state` | Delhi, Maharashtra, Karnataka, Tamil Nadu, Uttar Pradesh, Gujarat, Rajasthan, Telangana, West Bengal, Andhra Pradesh |
-| Bank | `sender_bank` / `receiver_bank` | SBI, HDFC, ICICI, Axis, PNB, Kotak, IndusInd, Yes Bank |
-| Device | `device_type` | Android, iOS, Web |
-| Network | `network_type` | 4G, 5G, WiFi, 3G |
-| Outcome | `transaction_status` | SUCCESS, FAILED |
-| Risk | `fraud_flag` | 0, 1 |
+This handles any question the user can express — including multi-step analyses, cross-dimensional comparisons, and novel aggregations that don't fit into predefined categories.
 
-### 2.3 Metric Inference
+### 2.2 Code Generation Strategy
 
-| Query Phrase | Computed Metric | Formula |
-|---|---|---|
-| "failure rate" | Failure rate % | `FAILED / total × 100` |
-| "success rate" | Success rate % | `SUCCESS / total × 100` |
-| "most frequently" / "volume" | Transaction count & share | `count / total × 100` |
-| "average amount" | Mean transaction value | `mean(amount_inr)` |
-| "high value" | P90+ transactions | `amount_inr >= ₹3,236` (always stated explicitly in response) |
-| "flagged" / "fraud flag" | Flag rate % | `fraud_flag=1 / total × 100` |
-| "peak hours" | Top hours by volume | `groupby(hour_of_day).count()` sorted descending |
-| "trend" | Change over time buckets | `groupby(time_unit).metric` with directional annotation |
+The code planner (`src/code_planner.py`) sends the user query to Gemini 2.5 Flash along with:
 
-### 2.4 Ambiguity Handling
+- **Full schema description**: column names, dtypes, valid values, sample rows
+- **Conversation context**: what was asked and computed in prior turns
+- **Strict instructions**: assign the answer to `result`, use only pandas/numpy, include comments
 
-When a query is ambiguous, the system states its assumption explicitly before answering rather than silently choosing one interpretation.
+The LLM generates executable Python code that directly computes the answer from the DataFrame.
 
-**Example:**
-> Query: "Which transactions have high failure rates?"
-> System: "I'll define 'high' as above the overall baseline of 4.95%. Would you like to adjust this threshold?"
+### 2.3 Execution Safety
 
-**Threshold assumptions used consistently throughout the system:**
-- "High value" → P90 (≥ ₹3,236) — always disclosed in response
-- "Peak hours" → top 5 by volume (the 17:00–20:00 cluster, peaking at 19:00)
-- "Significant difference" → >0.5 percentage point deviation from baseline
-- "Low sample" warning → triggered when a segment has fewer than 200 transactions
+Generated code runs inside `sandbox.py` with:
+
+- **Whitelisted builtins only** — no `open()`, `exec()`, `eval()`, `__import__()`, or system access
+- **Only pandas, numpy, math, datetime** available as libraries
+- **30-second timeout** — infinite loops are killed
+- **Isolated namespace** — the code cannot access anything outside its restricted scope
+- **Result capture** — code must assign to `result` for output
+
+### 2.4 Self-Healing Loop
+
+If code execution fails, the agent runs a retry loop:
+
+```
+1. Generate code → Execute
+2. If error → fix_code(original_code, error_message) → Re-execute
+3. If error again → fix_code again → Re-execute
+4. After MAX_RETRIES failures → return error to user
+```
+
+Additionally, if code succeeds but `validate_and_refine()` determines the output doesn't answer the question, the LLM generates corrected code and re-executes.
 
 ---
 
 ## 3. Insight Generation Logic
 
-### 3.1 Core Principle: Deterministic Analytics First
+### 3.1 Core Principle: Code-Computed Numbers Only
 
-The LLM **never computes numbers**. The pipeline is strictly:
+The LLM **never computes numbers from memory**. The pipeline is strictly:
 
 ```
 Natural Language Query
         ↓
-LLM → Structured Intent JSON  (intent + entities + metric)
+LLM → Python code
         ↓
-Pandas → Actual computation on dataset
+Sandbox → Deterministic pandas execution → computed results
         ↓
-LLM → Narrative wrapping of computed results only
+LLM → Narrative wrapping of computed results ONLY
 ```
 
 This ensures insight accuracy is never dependent on the model's memory or hallucination.
 
-### 3.2 Standard Computation Safeguards
+### 3.2 Computation Safeguards
 
-**Always report with denominator context:**
-- Not: "Recharge has the highest failure rate"
-- But: "Recharge has a 5.09% failure rate (638 failed out of 12,527 transactions)"
+The code planner's system prompt instructs Gemini to generate code that:
 
-**Always normalize for fair comparison:**
-- Segment comparisons use rates, never absolute counts
-- Example: P2P has more absolute failures (5,575) than Recharge (638) simply due to volume; the failure *rates* are comparable (4.96% vs 5.09%)
+- **Reports with denominators**: "5.09% failure rate (638 failed out of 12,527)" not just "5.09%"
+- **Uses rates for comparisons**: segment comparisons use rates, never absolute counts
+- **Checks sample sizes**: segments with fewer than 200 transactions get explicit warnings
+- **Anchors to baselines**: metrics are reported alongside overall averages
 
-**Low sample warnings:**
-- Fraud flag sub-segment analysis is particularly vulnerable given only 480 total flagged transactions
-- Any segment with <200 transactions gets an explicit low-confidence note in the response
+### 3.3 Response Structure — D-S-I-R Framework
 
-**Baseline anchoring:**
-- Every metric is reported alongside the overall baseline
-- Example: "Yes Bank's failure rate is 5.10%, slightly above the overall average of 4.95%"
-
-### 3.3 Honest Reporting of Uniformity
-
-Given the synthetic nature of the dataset, differences across most dimensions are small (typically <0.3 percentage points). The system will:
-- Report differences accurately without inflating their significance
-- Use language like "marginally higher" or "negligible difference" where appropriate
-- Reserve "notably higher" for genuine outliers such as bank pairs (Yes Bank→Kotak at 6.59%) or state-level differences (Uttar Pradesh 5.22% vs Telangana 4.71%)
-
-### 3.4 Response Structure — D-S-I-R Framework
-
-Every response follows this mandatory four-part structure:
+Every narrative response follows this mandatory four-part structure:
 
 | Component | Purpose | Example |
 |---|---|---|
 | **D**irect Answer | One sentence answering the question | "Recharge transactions have the highest failure rate at 5.09%." |
 | **S**upporting Metrics | The numbers behind the answer with denominators | "638 failed out of 12,527 transactions. Bill Payment is lowest at 4.88% (1,824/37,368)." |
-| **I**nterpretation | What the pattern means in business context | "The spread across all types is narrow (4.88%–5.09%), suggesting no transaction type is systematically more failure-prone than others." |
-| **R**ecommendation | Actionable next step where appropriate | "Monitor Recharge integrations for marginal improvement, but prioritize bank-pair reliability given the larger differentials observed there (up to 6.59%)." |
+| **I**nterpretation | What the pattern means in business context | "The spread across all types is narrow (4.88%–5.09%), suggesting no transaction type is systematically more failure-prone." |
+| **R**ecommendation | Actionable next step where appropriate | "Monitor Recharge integrations for marginal improvement." |
+
+### 3.4 Calibrated Language
+
+The system uses calibrated language based on the magnitude of observed differences:
+
+| Difference Magnitude | Required Language |
+|---|---|
+| < 0.5 percentage points | "marginal", "negligible", "slight" |
+| 0.5 – 2 percentage points | "notable", "meaningful" |
+| > 2 percentage points | "significant", "substantial" |
+
+This prevents the system from dramatising the small differences inherent in the synthetic dataset.
 
 ### 3.5 LLM-as-Judge Validation
 
-Every generated response passes through a Gemini 3.1 Pro judge before 
-reaching the user. The judge evaluates four dimensions:
+Every generated response passes through a Gemini 3.1 Pro judge before reaching the user. The judge evaluates four dimensions:
 
 - **Relevance:** Does the response directly answer the question asked?
 - **Grounding:** Are all cited statistics traceable to the computed data?
-- **Calibration:** Is language scaled appropriately to the magnitude of 
-  differences? (<0.5pp must use "marginal", >2pp required for "significant")
-- **Safety:** No causal claims unsupported by data, no fraud confirmation 
-  language (always "flagged for review")
+- **Calibration:** Is language scaled appropriately to the magnitude of differences?
+- **Safety:** No causal claims unsupported by data, no fraud confirmation language
 
-The judge either approves the response, automatically corrects it, or appends 
-a caveat. It never blocks the user — if the judge itself fails, the original 
-response passes through unchanged.
+The judge either approves the response, automatically corrects it, or appends a caveat. It never blocks the user — if the judge itself fails, the original response passes through unchanged.
 
 ---
 
-## 4. Pre-Computed Baselines (Analytics Engine Constants)
+## 4. Pre-Computed Baselines (Data Loader Constants)
 
-These baselines are established from EDA and used to validate live computation outputs and anchor all responses.
+These baselines are established from EDA and used by the judge to validate live outputs and anchor all responses.
 
 ### Failure Rate Baselines
 - **Overall:** 4.95% (12,376 / 250,000)
@@ -202,58 +189,38 @@ These baselines are established from EDA and used to validate live computation o
 
 ### Fraud Flag Baselines
 - **Overall flag rate:** 0.19% (480 / 250,000)
-- **High-value (P90+) flag rate:** 0.25% — 1.31× overall concentration (modest)
+- **High-value (P90+) flag rate:** 0.25% — 1.31× overall concentration
 - **Flagged transactions failure rate:** 4.38% (counterintuitively *lower* than unflagged 4.95%)
-- **Highest flag rate by type:** Recharge 0.24%
-- **Highest flag rate by bank:** Kotak 0.25%
-- **Highest flag rate by age:** 18-25 at 0.23%
 
 ### Amount Baselines
 - **Mean:** ₹1,312 | **Median:** ₹629 | **P90:** ₹3,236 | **P99:** ₹9,003
-- **Highest avg category:** Education ₹5,134 (2.4× median amount)
+- **Highest avg category:** Education ₹5,134
 - **Lowest avg category:** Transport ₹310
-- **Amount distribution:** heavily right-skewed; log transformation recommended for visualization
 
 ---
 
 ## 5. Conversational Context Management
 
-### State Vector
-The system maintains a conversation state object across turns:
+### How Follow-Ups Work
 
-```json
-{
-  "active_filters": {
-    "transaction_type": null,
-    "time_period": null,
-    "age_group": null,
-    "bank": null,
-    "device": null,
-    "network": null,
-    "is_weekend": null
-  },
-  "last_metric": null,
-  "last_segment": null,
-  "last_result": null,
-  "turn_count": 0
-}
-```
+The conversation manager (`src/conversation_manager.py`) maintains a history of prior turns including the query, generated code, and result summary. When a new query arrives:
+
+1. The code planner receives the conversation history as context
+2. Gemini can reference prior analyses when generating new code
+3. Follow-up queries like "break that down by state" resolve correctly against the prior analysis
 
 ### Supported Follow-Up Patterns
 
 | Follow-Up Type | Example | System Handling |
 |---|---|---|
-| Drill-down | "Break that down by state" | Inherit all active filters, add new groupby dimension |
-| Comparison toggle | "Compare with weekends" | Toggle is_weekend filter, rerun same metric |
-| Scope change | "Now look at only P2M" | Update transaction_type filter, rerun |
-| Entity correction | "Actually I meant ICICI not HDFC" | Replace entity in active filters, rerun |
-| Why question | "Why is that?" | Return pre-computed interpretation from insight layer |
-| Reset | "Start fresh" / "New question" | Clear state vector |
+| Drill-down | "Break that down by state" | Code planner generates new code referencing prior result |
+| Scope change | "Now look at only P2M" | New code adds filter, builds on prior analysis pattern |
+| Why question | "Why is that happening?" | Code planner generates multi-dimensional exploration |
+| Reset | "Start fresh" / "New question" | Conversation manager clears history |
 
 ### Guardrails
-- Drill-down producing a segment with <200 transactions triggers a low-confidence warning
-- If scope change invalidates a previous assumption, this is stated explicitly
-- Conversation history is passed to the LLM only for narrative context — all numbers are always freshly computed from pandas, never recalled from prior turns
+- Conversation history is passed to the LLM for code generation context — all numbers are always freshly computed from pandas, never recalled from prior turns
+- Each follow-up triggers full code generation → sandbox execution → narration, ensuring result freshness
 
 ---
 
@@ -261,12 +228,12 @@ The system maintains a conversation state object across turns:
 
 | What We Do Not Claim | Reason |
 |---|---|
-| Causal relationships | Correlation matrix shows near-zero correlations across all numeric fields; no causal inference is warranted |
-| Fraud detection capability | fraud_flag is an automated review flag, not confirmed fraud; flagged transactions actually fail *less* often (4.38% vs 4.95%) |
+| Causal relationships | Correlation matrix shows near-zero correlations; no causal inference warranted |
+| Fraud detection capability | fraud_flag is an automated review flag, not confirmed fraud |
 | Forecasting or prediction | No time-series modelling; all temporal insights are descriptive |
 | External benchmarks | No real-world UPI data to benchmark against |
 | User-level patterns | No user IDs in dataset; all analysis is aggregate only |
-| Drama where none exists | Failure rate differences are small across most dimensions due to synthetic data uniformity — the system will say so |
+| Drama where none exists | Failure rate differences are small due to synthetic data uniformity |
 
 ---
 
@@ -274,9 +241,11 @@ The system maintains a conversation state object across turns:
 
 | Component | Choice | Rationale |
 |---|---|---|
+| Code Interpreter | LLM-generated pandas code | Handles arbitrary queries without predefined intent categories |
+| Sandbox | Restricted exec environment | Prevents unsafe operations from LLM-generated code |
 | Data computation | Pandas | 250k rows fits in memory; all aggregations run in under 1 second |
-| LLM | Gemini API | Team familiarity; strong instruction-following for structured JSON output |
+| LLM | Gemini API | Strong instruction-following for code generation and structured output |
 | Interface | Streamlit | Fastest path to demo-ready conversational UI in Python |
-| State management | Python dict | Sufficient for the conversation depth expected; no over-engineering |
+| State management | Python dataclass | Sufficient for conversation depth expected |
 | No vector database | — | Structured tabular queries do not require semantic search |
-| No SQL layer | — | Pandas operations are sufficient, more readable, and easier to debug |
+| No SQL layer | — | Pandas operations are sufficient and easier to debug |

@@ -1,4 +1,4 @@
-# ⚡ InsightX — Leadership Analytics
+# ⚡ BRAIN-DS — Leadership Analytics
 
 > Conversational analytics for digital payments data.  
 > Ask questions in plain English. Get executive-grade insights backed by real computation.
@@ -9,7 +9,7 @@ Built for **Techfest IIT Bombay 2025-26** — InsightX: Leadership Analytics cha
 
 ## What It Does
 
-InsightX lets business leaders query 250,000 UPI transactions using natural language — no SQL, no dashboards, no analyst queues. The system understands diverse business questions, computes accurate statistics, and explains findings in clear, structured language.
+BRAIN-DS lets business leaders query 250,000 UPI transactions using natural language — no SQL, no dashboards, no analyst queues. The system **writes and executes pandas code** to compute accurate statistics, then narrates findings in clear, executive-ready language.
 
 **Example queries the system handles:**
 - *"Which transaction type has the highest failure rate?"*
@@ -23,19 +23,18 @@ InsightX lets business leaders query 250,000 UPI transactions using natural lang
 
 ## Architecture
 
-InsightX is built around one core principle: **the LLM never computes numbers**.
+BRAIN-DS is built on a **Code Interpreter** paradigm — the LLM generates code, not answers.
 
 ```
 User Query
-    → Agent          [decides: single-pass or agentic loop]
-    → Query Parser   [Gemini 2.5 Flash: NL → structured intent JSON]
-    → Analytics Engine [Pandas: deterministic computation]
-    → Insight Generator [Gemini 2.5 Flash: numbers → D-S-I-R narrative]
-    → Judge          [Gemini 3.1 Pro: validates response quality]
-    → Streamlit UI   [Chat interface with metrics, trace & follow-ups]
+    → Code Planner   [Gemini 2.5 Flash: writes pandas code]
+    → Sandbox         [Executes code safely against DataFrame]
+    → Narrative Gen   [Gemini 2.5 Flash: computed data → D-S-I-R narrative]
+    → Judge           [Gemini 3.1 Pro: validates response quality]
+    → Streamlit UI    [Chat interface with code trace & follow-ups]
 ```
 
-The LLM is used twice — once to parse intent, once to narrate results. All statistics come exclusively from pandas operating on the raw dataset.
+All statistics come exclusively from pandas executing in a restricted sandbox — the LLM only writes the code and narrates the results.
 
 For a full technical breakdown of every module, design decision, and data flow see **[docs/architecture.md](docs/architecture.md)**.  
 For the query understanding methodology and EDA-derived baselines see **[docs/approach.md](docs/approach.md)**.
@@ -50,8 +49,7 @@ insightx/
 │   ├── main.py                  # Streamlit entry point
 │   └── ui_components.py         # UI components & styling
 ├── data/
-│   ├── raw/                     # Dataset (gitignored — add locally)
-│   └── processed/
+│   └── raw/                     # Dataset (gitignored — add locally)
 ├── docs/
 │   ├── approach.md              # Query understanding & methodology
 │   └── architecture.md          # Full system architecture
@@ -61,15 +59,20 @@ insightx/
 │   └── 03_insight_validation.ipynb
 ├── src/
 │   ├── __init__.py
+│   ├── agent.py                 # Orchestrator: generate → execute → narrate
+│   ├── code_planner.py          # LLM code generation & narrative (Gemini 2.5 Flash)
+│   ├── sandbox.py               # Restricted code execution environment
+│   ├── judge.py                 # LLM-as-Judge validation (Gemini 3.1 Pro)
 │   ├── data_loader.py           # Data loading, caching, constants
-│   ├── query_parser.py          # NL → intent (Gemini 2.5 Flash)
-│   ├── analytics_engine.py      # All computation (pandas)
-│   ├── insight_generator.py     # Results → narrative (Gemini 2.5 Flash)
-│   ├── conversation_manager.py  # Conversation state
-│   ├── agent.py                 # Agentic execution loop (Gemini 3.1 Pro)
-│   └── judge.py                 # LLM-as-Judge validation (Gemini 3.1 Pro)
+│   ├── conversation_manager.py  # Conversation state & follow-up handling
+│   ├── query_parser.py          # [Legacy] NL → intent parser
+│   ├── analytics_engine.py      # [Legacy] Deterministic computation
+│   └── insight_generator.py     # [Legacy] Results → narrative
 ├── tests/
-│   └── sample_queries.json      # 15 sample queries + responses
+│   ├── sample_queries.json      # 15 sample queries + responses
+│   ├── test_e2e.py              # End-to-end pipeline tests
+│   ├── test_sandbox.py          # Sandbox security tests
+│   └── test_reproduce.py        # Reproducibility tests
 ├── .env.example                 # API key template
 ├── requirements.txt
 └── README.md
@@ -136,20 +139,15 @@ The app will open at `http://localhost:8501`.
 
 ---
 
-## Running Individual Modules
+## How It Works
 
-Each core module has a self-test block. Run from the project root:
-
-```bash
-# Verify dataset loads correctly
-python -m src.data_loader
-
-# Test the analytics engine (no API calls needed)
-python -m src.analytics_engine
-
-# Test the full pipeline: parser → engine → narrative (uses API)
-python -m src.insight_generator
-```
+1. **You ask a question** in natural language
+2. **Gemini writes pandas code** to answer your question
+3. **Code executes in a sandbox** — restricted environment, no file/network access, 30s timeout
+4. **If execution fails**, the LLM fixes the code and retries (up to 3 attempts)
+5. **If output doesn't match the question**, the LLM regenerates corrected code
+6. **Gemini narrates the results** in executive D-S-I-R format (Direct answer → Supporting metrics → Interpretation → Recommendation)
+7. **An LLM Judge validates** the response for accuracy, calibration, and safety before displaying
 
 ---
 
@@ -158,10 +156,9 @@ python -m src.insight_generator
 | Component | Technology |
 |---|---|
 | Language | Python 3.12 |
-| Data computation | Pandas |
-| LLM — Parsing & Narration  | Google Gemini 2.5 Flash  |
-| LLM — Planning & Synthesis | Google Gemini 3.1 Pro    |
-| LLM — Quality Judge        | Google Gemini 3.1 Pro    |
+| Data computation | Pandas (in-sandbox execution) |
+| LLM — Code Generation & Narration | Google Gemini 2.5 Flash |
+| LLM — Quality Judge | Google Gemini 3.1 Pro |
 | UI | Streamlit |
 | API client | google-genai |
 
@@ -196,7 +193,6 @@ Abhijeet Singh | 24B2468 <br>
 
 - **Data privacy:** The dataset is synthetic and does not contain real user data.
 - **Fraud flags:** `fraud_flag = 1` means flagged for automated review, not confirmed fraud.
-- **API costs:** Standard queries make 3 Gemini API calls (parser, narrator, judge). 
-  Agentic "why" queries add a synthesis call. Flash is used for speed-critical steps, 
-  Pro for reasoning-heavy steps.
-- **Rate limits:** If you hit API quota limits during development, test `analytics_engine.py` directly — it requires no API calls.
+- **API costs:** Standard queries make 3 Gemini API calls (code generation, narration, judge). The validate-and-refine step adds a 4th call when needed. Error retries add fix_code calls.
+- **Rate limits:** If you hit API quota limits during development, the system has built-in retry-with-backoff logic for 429 errors.
+- **Sandbox security:** LLM-generated code runs in a restricted environment with whitelisted builtins only — no file I/O, no network, no imports, 30-second timeout.
