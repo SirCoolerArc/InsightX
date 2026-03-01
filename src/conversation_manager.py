@@ -13,7 +13,7 @@ Usage:
     cm = ConversationManager()
     cm.add_turn(user_query, parsed_intent, analytics_result, insight_response)
     context = cm.get_context()          # pass to query_parser
-    history = cm.get_history()          # pass to Streamlit for display
+    history = cm.get_history()          # pass to Frontend UI for display
     cm.reset()                          # clear all state
 """
 
@@ -143,7 +143,7 @@ class ConversationManager:
 
     def get_history(self) -> list[dict]:
         """
-        Return the conversation history as a list of dicts for Streamlit display.
+        Return the conversation history as a list of dicts for Frontend UI display.
         Each dict has 'role' ('user' or 'assistant') and 'content' (str).
         """
         messages = []
@@ -312,9 +312,9 @@ if __name__ == "__main__":
         print(f"\nAfter turn {cm.get_turn_count()}:")
         print(cm.summarise_state())
 
-    print("\n--- Conversation History (for Streamlit) ---")
+    print("\n--- Conversation History (for Frontend UI) ---")
     for msg in cm.get_history():
-        role = "You" if msg["role"] == "user" else "InsightX"
+        role = "You" if msg["role"] == "user" else "BRAIN-DS"
         print(f"{role}: {msg['content']}")
 
     print("\n--- Context for next query ---")

@@ -1,0 +1,22 @@
+Keys: success, raw_output, summary, code
+No chart object found in result.
+Code:
+# Calculate transaction volumes by network type
+network_volume = df['network_type'].value_counts()
+total_transactions = len(df)
+network_percentage = (network_volume / total_transactions * 100).round(2)
+
+# Combine into a DataFrame for easier handling
+network_breakdown_df = pd.DataFrame({
+    'count': network_volume,
+    'percentage': network_percentage
+}).reset_index()
+network_breakdown_df = network_breakdown_df.rename(columns={'index': 'network_type'})
+
+# Convert to a list of dictionaries for the 'data' key
+data_list = network_breakdown_df.to_dict(orient='records')
+
+result = {
+    "answer": "Transaction volumes are broken down by network type, showing the count and percentage for each network.",
+    "data": data_list
+}

@@ -142,6 +142,13 @@ Every narrative response follows this mandatory four-part structure:
 | **I**nterpretation | What the pattern means in business context | "The spread across all types is narrow (4.88%–5.09%), suggesting no transaction type is systematically more failure-prone." |
 | **R**ecommendation | Actionable next step where appropriate | "Monitor Recharge integrations for marginal improvement." |
 
+### 3.4 The Visual Layer (Dynamic UI)
+
+Beyond text, the LLM is explicitly prompted to generate strictly typed JSON elements representing visual components:
+
+- **Insight Cards:** A flexible array of metric groups displayed in a dynamic CSS Masonry layout. The LLM determines the optimal number of cards (0 to 4+) and highlights critical metrics dynamically (e.g., success, warning, error colors).
+- **Native Charts:** For queries comparing dimensions or showing trends, the LLM generates a robust `<ChartRenderer>` config (Bar, Line, or Pie). The frontend intercepts this JSON schema and renders a flawless, interactive chart *before* the narrative begins.
+
 ### 3.4 Calibrated Language
 
 The system uses calibrated language based on the magnitude of observed differences:
@@ -245,7 +252,8 @@ The conversation manager (`src/conversation_manager.py`) maintains a history of 
 | Sandbox | Restricted exec environment | Prevents unsafe operations from LLM-generated code |
 | Data computation | Pandas | 250k rows fits in memory; all aggregations run in under 1 second |
 | LLM | Gemini API | Strong instruction-following for code generation and structured output |
-| Interface | Streamlit | Fastest path to demo-ready conversational UI in Python |
+| Interface | Next.js (React) | Premium custom chat UI with animated responses |
+| API Layer | FastAPI | Provides REST endpoint to connect Next.js to Python engine |
 | State management | Python dataclass | Sufficient for conversation depth expected |
 | No vector database | — | Structured tabular queries do not require semantic search |
 | No SQL layer | — | Pandas operations are sufficient and easier to debug |

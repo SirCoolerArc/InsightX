@@ -23,6 +23,7 @@ Usage:
 import os
 import json
 import time
+from datetime import datetime
 from google import genai
 from dotenv import load_dotenv
 
@@ -117,25 +118,35 @@ SAMPLE ROWS:
 # CODE GENERATION PROMPT
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """You are InsightX, an expert data analyst. Your job is to write Python pandas code
+_SYSTEM_PROMPT = """You are BRAIN-DS, an expert data analyst. Your job is to write Python pandas code
 to answer questions about a UPI digital payments dataset.
 
 RULES:
 1. You MUST assign your final answer to a variable called `result`.
-2. `result` should be a dictionary with these keys:
-   - "answer": A brief text answer to the question (1-2 sentences)
-   - "data": The key computed data (dict, list, or summary stats)
-   - "details": Any additional breakdown or supporting data (optional)
-3. The DataFrame is pre-loaded as `df`. You have `pd`, `np`, `math`, and `datetime` available.
-4. Do NOT import anything — all needed libraries are already available.
-5. Do NOT try to access files, network, or any external resources.
-6. Do NOT modify the original DataFrame in a way that would affect future queries.
+2. `result` MUST strictly follow this dictionary structure:
+    {{
+        "answer": "A brief text answer to the question (1-2 sentences)",
+        "data": [{{"col1": val1, "col2": val2}}], # The actual computed data points
+        "chart": {{ # CRITICAL: You MUST include this chart object for ANY comparison, breakdown, trend, or distribution. Omit ONLY for single scalar answers.
+            "type": "bar" | "line" | "pie", # Use 'pie' for share/proportions/percentages, 'line' for time trends (e.g., hour_of_day), and 'bar' for ranking/comparing distinct categories.
+            "data": [{{"x": val1, "y": val2}}], # Data for the chart
+            "xKey": "x", # Exact string key of the x-axis variable
+            "yKey": "y", # Exact string key of the y-axis variable
+            "title": "Chart Title Here"
+        }}
+    }}
+3. CRITICAL REQUIREMENT: If the user asks for a 'breakdown', 'trend', 'comparison', 'relationship', or uses words like 'vs', you MUST include the 'chart' object inside the 'result' dictionary.
+4. The DataFrame is pre-loaded as `df`. You have `pd`, `np`, `math`, and `datetime` available.
+5. Do NOT import anything — all needed libraries are already available.
+6. Do NOT try to access files, network, or any external resources.
+7. Do NOT modify the original DataFrame in a way that would affect future queries.
    Work on copies if needed (e.g. `df_filtered = df[df["col"] == "val"]`).
-7. Use `.copy()` when creating filtered subsets to avoid SettingWithCopyWarning.
-8. Round percentages to 2 decimal places.
-9. Include relevant counts/totals alongside percentages (e.g. "1,234 out of 50,000").
-10. For comparative analyses, always compute ALL segments for fair comparison.
-11. Return ONLY valid Python code. No markdown fences, no explanations outside comments.
+8. Use `.copy()` when creating filtered subsets to avoid SettingWithCopyWarning.
+9. Round percentages to 2 decimal places.
+10. Include relevant counts/totals alongside percentages (e.g. "1,234 out of 50,000").
+11. For comparative analyses, always compute ALL segments for fair comparison.
+12. Return ONLY valid Python code. No markdown fences, no explanations outside comments.
+13. OUT OF DOMAIN: If the user's query is completely unrelated or random regarding the digital payments dataset, just set `result = {{"answer": "This question is outside the scope of the digital payments transaction dataset.", "data": {{}}}}`
 
 COMMON PATTERNS:
 - Failure rate: `df["is_failed"].mean() * 100`
@@ -345,32 +356,73 @@ def generate_narrative(
     user_query: str,
     code: str,
     result_summary: str,
+    deep_dive_results: list[str] = None,
     stdout: str = "",
 ) -> str:
     """
     Generate a clear, executive-readable D-S-I-R narrative from code results.
+    Weaves in deep dive insights if provided.
     """
     stdout_block = ""
     if stdout and stdout.strip():
         stdout_block = f"\nDEBUG OUTPUT:\n{stdout}"
 
-    prompt = f"""You are InsightX, a senior business analytics assistant for a digital payments platform.
-Convert the analysis results below into a clear, executive-readable insight.
+    deep_dive_block = ""
+    if deep_dive_results:
+        joined_deep_dives = "\n\n".join(deep_dive_results)
+        deep_dive_block = f"""
+BACKGROUND DEEP-DIVE ANALYSIS:
+Our background agents automatically ran related segmentations/correlations and found the following:
+{joined_deep_dives}
+
+IMPORTANT: Please weave these deeper insights into your 'Interpretation' and 'Supporting Metrics' sections naturally. Do not explicitly say 'a background agent found this', just present the insight as part of the overall data analysis.
+"""
+
+    current_time_str = datetime.now().strftime("%A, %B %d, %Y - %I:%M %p")
+    prompt = f"""You are BRAIN-DS, a senior business analytics assistant for a digital payments platform.
+You are tasked with presenting the results of a Python data analysis.
+
+CURRENT SYSTEM TIME: {current_time_str}
+(Use this to provide context-aware greetings if you choose to greet the user, e.g., "Good morning" vs "Good afternoon").
 
 RULES:
-1. Use ONLY the numbers from the analysis output. NEVER invent statistics.
-2. Follow the D-S-I-R structure:
-   - Direct Answer: One sentence directly answering the question.
-   - Supporting Metrics: Key numbers with context (e.g. "1,234 out of 50,000").
-   - Interpretation: What the pattern means for the business. Be honest about small differences.
-   - Recommendation: One actionable next step (skip if data doesn't support it).
-3. Keep it to 150-250 words, in clean paragraphs (no bullet points).
-4. Use appropriate language for magnitude:
-   - < 0.5pp difference: "marginal", "negligible"
-   - 0.5-2pp: "notable", "meaningful"
-   - > 2pp: "significant", "considerable"
-5. Never confirm fraud — say "flagged for review", not "fraudulent".
-6. Be professional but conversational.
+1. You MUST output your response as valid, parseable JSON only. Do not wrap in markdown code blocks.
+2. Follow this strict JSON schema:
+{{
+  "summary": "A 1-2 sentence high-level executive summary.",
+  "narrative": "The full conversational D-S-I-R text response (using markdown).",
+  "cards": [
+    // Generate a FLEXIBLE number of cards (0 to 4+) depending on how much meaningful data is available.
+    // Ensure the card count matches the complexity of the query. Do NOT create filler cards.
+    // If a simple metric is requested, 1 card is enough. If a complex breakdown is provided, use multiple cards.
+    // Option A: Metric Group
+    {{
+      "type": "metric_group",
+      "title": "KEY PERFORMANCE INDICATORS",
+      "metrics": [
+        {{"label": "Metric Name", "value": "Value", "status": "success/warning/error/neutral"}}
+      ]
+    }},
+    // Option B: Key-Value Table
+    {{
+      "type": "key_value",
+      "title": "DATA BREAKDOWN",
+      "sections": [
+        {{"title": "Section Name", "items": [{{"label": "Key", "value": "Value"}}]}}
+      ]
+    }},
+    // Option C: Insight List (for Deep Dives)
+    {{
+      "type": "insight_list",
+      "title": "DEEP DIVE TRANSLATIONS",
+      "items": [
+        {{"title": "Insight", "description": "Details", "status": "success/warning/info"}}
+      ]
+    }}
+  ]
+}}
+3. Use ONLY the numbers from the analysis output. NEVER invent statistics.
+4. For the `narrative` field, naturally weave in the background deep dives if any. Be professional but conversational.
 
 USER'S QUESTION: {user_query}
 
@@ -382,14 +434,31 @@ CODE EXECUTED:
 ANALYSIS OUTPUT:
 {result_summary}
 {stdout_block}
+{deep_dive_block}
 
-Write a D-S-I-R response:"""
+Output valid JSON:"""
 
     try:
         raw = _call_gemini(prompt)
-        return raw.strip()
+        # Strip markdown fences if Gemini added them despite instructions
+        clean_json = raw.strip()
+        if clean_json.startswith("```json"):
+            clean_json = clean_json[7:]
+        if clean_json.startswith("```"):
+            clean_json = clean_json[3:]
+        if clean_json.endswith("```"):
+            clean_json = clean_json[:-3]
+        
+        # Verify it parses
+        json.loads(clean_json.strip())
+        return clean_json.strip()
     except Exception as e:
-        return f"Analysis complete but narrative generation failed. Raw result:\n{result_summary}"
+        fallback = {
+            "summary": "Analysis completed, but I could not format the insights perfectly.",
+            "narrative": f"Analysis complete. Raw result:\n{result_summary}",
+            "cards": []
+        }
+        return json.dumps(fallback)
 
 
 # ---------------------------------------------------------------------------

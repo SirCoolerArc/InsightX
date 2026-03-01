@@ -55,12 +55,12 @@ FALLBACK_MODEL = "gemini-2.5-pro"
 # ---------------------------------------------------------------------------
 
 _JUDGE_SYSTEM_PROMPT = f"""
-You are a senior data quality judge for InsightX, an analytics system for
+You are a senior data quality judge for BRAIN-DS, an analytics system for
 a digital payments platform. Your job is to evaluate whether a generated
 insight response meets strict quality standards before it reaches
 business leaders.
 
-You evaluate responses on four dimensions:
+You evaluate responses on five dimensions:
 
 1. RELEVANCE
    Does the response directly answer the user's original question?
@@ -90,6 +90,12 @@ You evaluate responses on four dimensions:
    Overall failure rate baseline is {CONSTANTS['OVERALL_FAILURE_RATE']}%.
    Fraud flag rate baseline is {CONSTANTS['OVERALL_FLAG_RATE']}% (flagged for review only).
 
+5. LOGICAL INTEGRITY (ANTI-SYCOPHANCY)
+   Does the response blindly agree with an unproven or exaggerated user premise?
+   If the user implies "huge losses" or "massive profits", but the data reflects a normal 5% failure rate and normal successful margins, the response MUST correct the premise, not validate it.
+   If the user asks an unrelated random question, the response MUST reject it as out of scope.
+   Fail if: the response adopts the user's false/dramatic premise or tries to answer an out-of-domain question without declaring it out of bounds.
+
 RESPONSE FORMAT:
 Return ONLY valid JSON. No explanation, no markdown fences.
 
@@ -100,7 +106,8 @@ Return ONLY valid JSON. No explanation, no markdown fences.
         "relevance": 1-5,
         "grounding": 1-5,
         "calibration": 1-5,
-        "safety": 1-5
+        "safety": 1-5,
+        "logical_integrity": 1-5
     }},
     "issues": [
         // List of specific issues found. Empty list if approved.
@@ -252,7 +259,7 @@ GENERATED RESPONSE TO EVALUATE:
 
 {data_context}
 
-Evaluate the response against all four dimensions and return your verdict as JSON.
+Evaluate the response against all five dimensions and return your verdict as JSON.
 """
 
 
@@ -348,7 +355,7 @@ def _summarise_verdict(verdict: dict) -> str:
 
 def format_judge_badge(verdict: dict) -> str:
     """
-    Return a premium HTML badge for display in the Streamlit UI.
+    Return a premium HTML badge for display in the Frontend UI.
     Shows judge approval status with visual emphasis.
     """
     if not verdict.get("judge_ran"):
@@ -395,7 +402,7 @@ def format_judge_badge(verdict: dict) -> str:
 
 def get_judge_expander_content(verdict: dict) -> str:
     """
-    Return markdown content for a judge details expander in Streamlit.
+    Return markdown content for a judge details expander in the Frontend UI.
     """
     if not verdict.get("judge_ran"):
         return "Judge did not run for this response."

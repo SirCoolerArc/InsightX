@@ -12,15 +12,25 @@ BRAIN-DS is a conversational analytics system that allows business leaders to qu
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     STREAMLIT UI LAYER                      │
-│   app/main.py               app/ui_components.py            │
-│   • Chat interface          • Dark terminal theme           │
-│   • Session state           • Glassmorphism cards           │
-│   • Sample query chips      • Animated header & sidebar     │
-│   • Follow-up buttons       • Data table expander           │
+│                       NEXT.JS UI LAYER                      │
+│   frontend/src/                frontend/components/         │
+│   • Tailwind CSS styling       • ChatInterface.tsx          │
+│   • Framer Motion              • MessageBubble.tsx          │
+│   • User Input Box             • React Markdown Rendering   │
+│   • Code/Steps Expanders       • Followups List             │
 └──────────────────────────┬──────────────────────────────────┘
-                           │ user query (str)
+                           │ POST /api/query
                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    FASTAPI BACKEND LAYER                    │
+│   api/main.py                                               │
+│   • CORS Middleware                                         │
+│   • Context handling using Session IDs                      │
+│   • Routes query to agent.run_agent()                       │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ user_query (str)
+                           ▼
+
 ┌─────────────────────────────────────────────────────────────┐
 │                      AGENT                  [ORCHESTRATOR]  │
 │   src/agent.py                                              │
@@ -38,9 +48,10 @@ BRAIN-DS is a conversational analytics system that allows business leaders to qu
 │   • generate_analysis_code() — Gemini writes pandas code    │
 │   • fix_code() — LLM corrects code that errored             │
 │   • validate_and_refine() — checks output answers question  │
-│   • generate_narrative() — D-S-I-R executive narrative      │
+│   • generate_narrative() — D-S-I-R narrative, KPI Cards,    │
+│                            and Native Chart JSON            │
 │   • generate_followups() — 2–3 follow-up suggestions        │
-│   • get_schema_prompt() — builds full schema description     │
+│   • get_schema_prompt() — builds full schema description    │
 │   • build_conversation_context() — formats turn history     │
 │   • Model: Gemini 2.5 Flash                                 │
 └──────────────────────────┬──────────────────────────────────┘
@@ -55,7 +66,7 @@ BRAIN-DS is a conversational analytics system that allows business leaders to qu
 │   • 30-second timeout with thread-based enforcement         │
 │   • Captures stdout + result + error                        │
 │   • Handles DataFrame, Series, scalar, dict results         │
-│   • format_result_for_display() — formats for LLM/UI       │
+│   • format_result_for_display() — formats for LLM/UI        │
 └──────────────────────────┬──────────────────────────────────┘
                            │ execution result (dict)
                            ▼
@@ -81,7 +92,7 @@ BRAIN-DS is a conversational analytics system that allows business leaders to qu
 │   • Approves / corrects / appends caveat                    │
 │   • Catches: hallucinated numbers, overclaimed significance,│
 │     fraud language, irrelevant answers                      │
-│   • Model: Gemini 3.1 Pro → falls back to 2.5 Pro          │
+│   • Model: Gemini 3.1 Pro → falls back to 2.5 Pro           │
 │   • Never blocks user if judge itself fails                 │
 └──────────────────────────┬──────────────────────────────────┘
                            │ validated response
@@ -132,11 +143,11 @@ Legacy computation engine. Contains six deterministic compute functions dispatch
 ### `src/insight_generator.py`
 Legacy narrative generator. Receives analytics results and produces D-S-I-R narratives via Gemini. Retained in the codebase as a fallback path.
 
-### `app/main.py`
-The application entry point. Initialises Streamlit session state, wires the pipeline through `run_agent()`, and manages the render loop. Handles prefilled queries from sample chips and follow-up buttons.
+### `api/main.py`
+The FastAPI application entry point. Receives POST requests from the Next.js frontend, manages conversation state context per session, routes the query into `run_agent()`, and returns standard JSON responses.
 
-### `app/ui_components.py`
-All visual components. Premium dark analytics dashboard with amber/gold accents using Bebas Neue (display), Space Mono (metrics), and DM Sans (body). Features animated gradient header, glassmorphism response cards, floating orb welcome screen, shimmer loading animation, and polished sidebar with session info, architecture badge, and dataset overview card.
+### `frontend/src/components/*`
+The Next.js React frontend. Features a premium professional aesthetic using Tailwind CSS and Framer Motion. Contains `ChatInterface.tsx` and `MessageBubble.tsx` to handle agent streaming, markdown rendering, native JSON charts via Recharts (`ChartRenderer.tsx`), and a dynamic masonry grid layout for KPI blocks (`InsightCards.tsx`).
 
 ---
 
@@ -202,7 +213,7 @@ Separating code generation (LLM #1) from narration (LLM #2) enforces the princip
 Automated quality validation catches hallucinated numbers, overclaimed significance, and unsafe fraud language before they reach the user. The judge never blocks — if it fails, the original response passes through unchanged.
 
 ### Why Module-Level DataFrame Caching?
-Streamlit reruns the entire script on every user interaction. Without caching, the 250k-row CSV would be re-read from disk on every query. The module-level cache in `data_loader.py` ensures it is read exactly once per session.
+FastAPI maintains application state in memory across requests. Without caching, the 250k-row CSV would be re-read from disk on every query. The module-level cache in `data_loader.py` ensures it is read exactly once when the server starts.
 
 ---
 
@@ -215,7 +226,9 @@ Streamlit reruns the entire script on every user interaction. Without caching, t
 | LLM — Code Generation & Narration | Gemini 2.5 Flash | gemini-2.5-flash |
 | LLM — Judge | Gemini 3.1 Pro | gemini-3.1-pro-preview |
 | LLM — Judge Fallback | Gemini 2.5 Pro | gemini-2.5-pro |
-| UI framework | Streamlit | Latest |
+| UI framework | Next.js (React) | 14.x |
+| Backend API framework | FastAPI | Latest |
+| API Server | Uvicorn | Latest |
 | API client | google-genai | Latest |
 | Environment | python-dotenv | Latest |
 
@@ -226,9 +239,13 @@ Streamlit reruns the entire script on every user interaction. Without caching, t
 ```
 insightx/
 │
-├── app/
-│   ├── main.py                  # Streamlit entry point
-│   └── ui_components.py         # All visual components & CSS
+├── api/
+│   └── main.py                  # FastAPI backend entry point
+│
+├── frontend/                    # Next.js React Frontend App
+│   ├── src/app/                 # Layouts and global CSS
+│   ├── src/components/          # ChatInterface, MessageBubble
+│   └── package.json             # NPM dependencies
 │
 ├── data/
 │   └── raw/                     # Original CSV (gitignored)

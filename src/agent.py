@@ -19,6 +19,8 @@ Usage:
 """
 
 import traceback
+import queue
+import concurrent.futures
 
 try:
     from src.code_planner import (
@@ -76,6 +78,233 @@ def run_agent(user_query: str, conversation_context: dict = None) -> dict:
         verdict   : dict  — judge verdict (if ran)
         code      : str   — final executed code
     """
+
+def _run_analysis_worker(task_id: str, is_main: bool, user_query: str, schema: str, conv_context_str: str, df, result_queue: queue.Queue):
+    """
+    Runs the generate -> execute -> fix loop for a single task.
+    Puts status updates and final result into result_queue.
+    """
+    import json
+    def _enqueue_event(event_type: str, data: dict):
+        if is_main or event_type != "status" or data.get("step") == "deep_dive_start":
+            if not is_main and event_type == "status":
+                data["message"] = f"[Deep Dive] {data['message']}"
+            result_queue.put({"task_id": task_id, "event_json": json.dumps({"type": event_type, "data": data})})
+
+    steps = []
+    last_code = ""
+    last_result = None
+    last_result_summary = "No output"
+
+    if is_main:
+        _enqueue_event("status", {"message": "Generating analysis code...", "step": "generate_code"})
+    else:
+        _enqueue_event("status", {"message": "Launching background deep-dive analysis...", "step": "deep_dive_start"})
+        
+    try:
+        code = generate_analysis_code(user_query, schema, conv_context_str)
+    except Exception as e:
+        result_queue.put({"task_id": task_id, "error": str(e), "steps": steps})
+        return
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        if is_main:
+            _enqueue_event("status", {"message": f"Executing code (Attempt {attempt})...", "step": "execute_code", "code": code})
+        
+        step = {
+            "iteration": attempt,
+            "phase": "execute",
+            "code": code,
+            "result": None,
+            "error": None,
+        }
+
+        exec_result = execute_code(code, df)
+
+        if exec_result["success"]:
+            step["phase"] = "success"
+            step["result"] = exec_result["result"]
+            last_code = code
+            last_result = exec_result["result"]
+            last_result_summary = format_result_for_display(exec_result["result"])
+            if exec_result.get("stdout"):
+                step["stdout"] = exec_result["stdout"]
+            steps.append(step)
+
+            if attempt == 1 and last_result is not None:
+                if is_main: _enqueue_event("status", {"message": "Validating output...", "step": "validate"})
+                try:
+                    validation = validate_and_refine(user_query, code, last_result_summary, schema)
+                    if not validation.get("aligned") and validation.get("new_code"):
+                        if is_main: _enqueue_event("status", {"message": "Output needed refinement. Regenerating...", "step": "refining"})
+                        steps.append({
+                            "iteration": attempt,
+                            "phase": "refinement",
+                            "reason": validation.get("reason", "Output misaligned"),
+                            "code": validation["new_code"],
+                        })
+                        code = validation["new_code"]
+                        continue
+                except Exception:
+                    pass
+            break
+        else:
+            step["phase"] = "error"
+            step["error"] = exec_result["error"]
+            steps.append(step)
+
+            if attempt < MAX_RETRIES:
+                if is_main: _enqueue_event("status", {"message": f"Execution failed. Attempting to fix... ({attempt}/{MAX_RETRIES})", "step": "fix_code", "error": exec_result["error"]})
+                try:
+                    code = fix_code(code, exec_result["error"], user_query, schema)
+                    steps.append({"iteration": attempt, "phase": "fix", "code": code})
+                except Exception as fix_error:
+                    result_queue.put({"task_id": task_id, "error": exec_result["error"], "steps": steps})
+                    return
+            else:
+                result_queue.put({"task_id": task_id, "error": exec_result["error"], "steps": steps})
+                return
+
+    # Done
+    result_queue.put({
+        "task_id": task_id,
+        "success": True,
+        "last_code": last_code,
+        "last_result": last_result,
+        "last_result_summary": last_result_summary,
+        "steps": steps
+    })
+
+
+def run_agent_stream(user_query: str, conversation_context: dict = None):
+    """
+    Generator version of run_agent that yields progress updates
+    as SSE JSON events. Runs tasks in parallel using ThreadPoolExecutor.
+    """
+    import json
+    def _yield_event(event_type: str, data: dict):
+        return json.dumps({"type": event_type, "data": data})
+
+    yield _yield_event("status", {"message": "Initializing...", "step": "init"})
+
+    df = get_dataframe()
+    schema = get_schema_prompt(df)
+    conv_context_str = build_conversation_context(conversation_context.get("history", [])) if conversation_context else ""
+
+    q = queue.Queue()
+    tasks = [
+        {"id": "main", "query": user_query, "is_main": True},
+        {"id": "deep_dive_1", "query": f"DEEP DIVE CONTEXT: Original query was '{user_query}'. Task: Without explicitly repeating the answer to the main query, break the data down by a relevant categorical segment (e.g., network, merchant_category, age_group, state) to find interesting deeper insights or correlations. If the original query is already a breakdown, find an anomaly instead.", "is_main": False}
+    ]
+
+    worker_results = {}
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        futures = {
+            executor.submit(_run_analysis_worker, t["id"], t["is_main"], t["query"], schema, conv_context_str, df, q): t["id"]
+            for t in tasks
+        }
+        
+        # Consume queue
+        completed = 0
+        while completed < len(tasks):
+            try:
+                msg = q.get(timeout=0.1)
+                if "event_json" in msg:
+                    yield msg["event_json"]
+                else:
+                    worker_results[msg["task_id"]] = msg
+                    completed += 1
+            except queue.Empty:
+                if all(f.done() for f in futures):
+                    while not q.empty():
+                        msg = q.get()
+                        if "event_json" in msg:
+                            yield msg["event_json"]
+                        else:
+                            worker_results[msg["task_id"]] = msg
+                    break
+
+    main_res = worker_results.get("main", {})
+    if not main_res.get("success"):
+        error_msg = main_res.get("error", "Unknown error")
+        yield _yield_event("final", {
+            "response": f"I couldn't produce a working analysis. Last error: {error_msg}",
+            "result": {"success": False, "raw_output": error_msg, "code": ""},
+            "steps": main_res.get("steps", [])
+        })
+        return
+
+    yield _yield_event("status", {"message": "Synthesizing final insights...", "step": "narrative"})
+    
+    deep_dive_outputs = []
+    for t_id, res in worker_results.items():
+        if t_id != "main" and res.get("success") and res.get("last_result_summary") and res.get("last_result_summary") != "No output":
+            deep_dive_outputs.append(res["last_result_summary"])
+            
+    try:
+        narrative = generate_narrative(
+            user_query,
+            main_res.get("last_code", ""),
+            main_res.get("last_result_summary", ""),
+            deep_dive_results=deep_dive_outputs,
+            stdout=""
+        )
+        try:
+            parsed_narrative = json.loads(narrative)
+        except:
+            parsed_narrative = {
+                "summary": "Analysis generated but failed to parse into UI cards.",
+                "narrative": narrative,
+                "cards": []
+            }
+    except Exception:
+        fallback_text = f"Analysis complete.\n\n{main_res.get('last_result_summary', '')}"
+        parsed_narrative = {
+            "summary": "Analysis generated but formatting failed.",
+            "narrative": fallback_text,
+            "cards": []
+        }
+
+    yield _yield_event("status", {"message": "Generating follow-ups...", "step": "followups"})
+    try:
+        followups = generate_followups(user_query, main_res.get("last_result_summary", ""))
+    except Exception:
+        followups = []
+
+    yield _yield_event("status", {"message": "Running quality review...", "step": "judge"})
+    verdict = {}
+    try:
+        # Pass the narrative text part to the judge
+        verdict = judge_response(user_query, parsed_narrative["narrative"], {"success": True, "raw_output": main_res.get("last_result_summary", "")})
+        if verdict.get("final_response"): 
+            parsed_narrative["narrative"] = verdict["final_response"]
+    except Exception:
+        verdict = {"judge_ran": False}
+
+    final_payload = {
+        "response": parsed_narrative.get("narrative", ""),
+        "insight_summary": parsed_narrative.get("summary", ""),
+        "cards": parsed_narrative.get("cards", []),
+        "result": {
+            "success": True,
+            "raw_output": main_res.get("last_result"),
+            "summary": main_res.get("last_result_summary"),
+            "code": main_res.get("last_code"),
+        },
+        "followups": followups,
+        "mode": "code_interpreter",
+        "steps": main_res.get("steps", []),
+        "verdict": verdict,
+        "code": main_res.get("last_code"),
+    }
+    
+    
+    yield _yield_event("final", final_payload)
+
+
+def run_agent(user_query: str, conversation_context: dict = None) -> dict:
+    """Main entry point for the code interpreter agent."""
     # Load the DataFrame and schema
     df = get_dataframe()
     schema = get_schema_prompt(df)
@@ -251,7 +480,7 @@ def _error_result(error_msg: str, steps: list) -> dict:
 
 def format_investigation_trace(steps: list[dict]) -> str:
     """
-    Format execution steps for the Streamlit UI expander.
+    Format execution steps for the Frontend UI expander.
     Shows the code, output, and any errors for each iteration.
     """
     if not steps:

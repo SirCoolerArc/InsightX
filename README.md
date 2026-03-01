@@ -27,11 +27,12 @@ BRAIN-DS is built on a **Code Interpreter** paradigm — the LLM generates code,
 
 ```
 User Query
+    → Next.js UI      [Sends query to FastAPI backend]
     → Code Planner   [Gemini 2.5 Flash: writes pandas code]
     → Sandbox         [Executes code safely against DataFrame]
-    → Narrative Gen   [Gemini 2.5 Flash: computed data → D-S-I-R narrative]
+    → Narrative Gen   [Gemini 2.5 Flash: computes data → D-S-I-R narrative, Cards, and Native Chart JSON]
     → Judge           [Gemini 3.1 Pro: validates response quality]
-    → Streamlit UI    [Chat interface with code trace & follow-ups]
+    → Next.js UI      [Chat interface renders animated text, Masonry Insight Cards, and Recharts]
 ```
 
 All statistics come exclusively from pandas executing in a restricted sandbox — the LLM only writes the code and narrates the results.
@@ -45,9 +46,9 @@ For the query understanding methodology and EDA-derived baselines see **[docs/ap
 
 ```
 insightx/
-├── app/
-│   ├── main.py                  # Streamlit entry point
-│   └── ui_components.py         # UI components & styling
+├── api/
+│   └── main.py                  # FastAPI backend server
+├── frontend/                    # Next.js React frontend
 ├── data/
 │   └── raw/                     # Dataset (gitignored — add locally)
 ├── docs/
@@ -130,12 +131,40 @@ Or override the path via environment variable:
 INSIGHTX_DATA_PATH=/path/to/your/file.csv
 ```
 
-### 6. Run the app
+### 6. Run the application locally (For Evaluators)
+
+To run the application locally on an evaluation machine, you will need two separate terminal windows.
+
+**Prerequisites:**
+- Python 3.10+
+- Node.js 18+ and npm
+
+**Terminal 1: Start the Backend (FastAPI)**
 ```bash
-streamlit run app/main.py
+# Ensure you are in the insightx directory with the virtual environment activated
+# Windows
+venv\Scripts\Activate.ps1
+# Mac/Linux
+source venv/bin/activate
+
+# Run the server
+python -m uvicorn api.main:app --port 8080
+```
+*The backend will boot up and load the dataset into memory. Wait until you see `Application startup complete`.*
+
+**Terminal 2: Start the Frontend (Next.js)**
+```bash
+# Open a new terminal and navigate to the frontend folder
+cd frontend
+
+# Install Node dependencies (only needed the first time)
+npm install
+
+# Start the Next.js development server
+npm run dev
 ```
 
-The app will open at `http://localhost:8501`.
+The application is now accessible at [http://localhost:3000](http://localhost:3000).
 
 ---
 
@@ -155,11 +184,12 @@ The app will open at `http://localhost:8501`.
 
 | Component | Technology |
 |---|---|
-| Language | Python 3.12 |
+| Language | Python 3.12, TypeScript |
 | Data computation | Pandas (in-sandbox execution) |
 | LLM — Code Generation & Narration | Google Gemini 2.5 Flash |
 | LLM — Quality Judge | Google Gemini 3.1 Pro |
-| UI | Streamlit |
+| UI | Next.js, Tailwind CSS, Framer Motion |
+| API Layer | FastAPI, Uvicorn |
 | API client | google-genai |
 
 ---

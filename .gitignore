@@ -1,6 +1,5 @@
 # Ignore the following files and directories
 data/raw/
-.env
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
