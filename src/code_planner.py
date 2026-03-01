@@ -431,29 +431,40 @@ CODE EXECUTED:
 {code}
 ```
 
-ANALYSIS OUTPUT:
+### PRIMARY ANALYSIS RESULT (from code execution):
 {result_summary}
 {stdout_block}
+
 {deep_dive_block}
 
-Output valid JSON:"""
+---
+Based on the results above, generate the D-S-I-R response. 
+Output ONLY the valid JSON object as defined in the rules."""
 
-    try:
-        raw = _call_gemini(prompt)
-        # Strip markdown fences if Gemini added them despite instructions
-        clean_json = raw.strip()
-        if clean_json.startswith("```json"):
-            clean_json = clean_json[7:]
-        if clean_json.startswith("```"):
-            clean_json = clean_json[3:]
-        if clean_json.endswith("```"):
-            clean_json = clean_json[:-3]
-        
-        # Verify it parses
-        json.loads(clean_json.strip())
-        return clean_json.strip()
-    except Exception as e:
-        fallback = {
+    for attempt in range(2):
+        try:
+            raw = _call_gemini(prompt)
+            clean_json = _clean_json_response(raw)
+            
+            # Verify it parses. Use strict=False to allow raw control chars (newlines/tabs) 
+            # which Gemini sometimes drops into large narrative text blocks.
+            parsed = json.loads(clean_json, strict=False)
+            return json.dumps(parsed) # Return re-serialised clean JSON
+        except Exception as e:
+            if attempt == 0:
+                # Try once more with a stronger hint
+                prompt += "\n\nCRITICAL: Your previous response failed to parse as JSON. Ensure all quotes are escaped, no trailing commas exist, and all control characters are properly escaped. Return ONLY valid JSON."
+                continue
+                
+            import traceback
+            with open("crash_debug_narrative.txt", "w", encoding="utf-8") as f:
+                f.write(f"Error in generate_narrative after 2 attempts: {e}\n")
+                f.write(traceback.format_exc())
+                f.write(f"\n\nRaw prompt:\n{prompt}\n")
+                if 'raw' in locals():
+                    f.write(f"\n\nRaw LLM response:\n{raw}\n")
+            
+            fallback = {
             "summary": "Analysis completed, but I could not format the insights perfectly.",
             "narrative": f"Analysis complete. Raw result:\n{result_summary}",
             "cards": []
@@ -482,14 +493,44 @@ def _clean_code_response(raw: str) -> str:
 
 
 def _clean_json_response(raw: str) -> str:
-    """Strip markdown fences from JSON responses."""
+    """Robustly extract JSON from LLM responses, avoiding conversational wrappers."""
+    import re
     text = raw.strip()
-    if text.startswith("```json"):
-        text = text[len("```json"):].strip()
-    elif text.startswith("```"):
-        text = text[3:].strip()
-    if text.endswith("```"):
-        text = text[:-3].strip()
+    
+    # Try finding markdown JSON block specifically
+    match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
+    if match:
+        text = match.group(1).strip()
+    
+    # Try finding the first '{' or '[' and last '}' or ']'
+    start_idx = -1
+    end_idx = -1
+    
+    # Find first json opening
+    dict_start = text.find('{')
+    list_start = text.find('[')
+    
+    if dict_start != -1 and list_start != -1:
+        start_idx = min(dict_start, list_start)
+    elif dict_start != -1:
+        start_idx = dict_start
+    elif list_start != -1:
+        start_idx = list_start
+        
+    # Find last json closing
+    dict_end = text.rfind('}')
+    list_end = text.rfind(']')
+    
+    if dict_end != -1 and list_end != -1:
+        end_idx = max(dict_end, list_end)
+    elif dict_end != -1:
+        end_idx = dict_end
+    elif list_end != -1:
+        end_idx = list_end
+        
+    if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
+        return text[start_idx:end_idx+1]
+        
     return text
 
 

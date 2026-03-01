@@ -4,7 +4,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Bot, User, Code, CheckCircle, AlertTriangle, FileText, BarChart3, ChevronDown, ChevronRight } from 'lucide-react';
+import { Bot, User, Code, CheckCircle, AlertTriangle, FileText, BarChart3, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { Message } from '@/types';
 import ChartRenderer from './ChartRenderer';
 import { ExecutiveSummaryBox, InsightCardRenderer } from './InsightCards';
@@ -13,6 +13,8 @@ export default function MessageBubble({ message }: { message: Message }) {
     const isUser = message.role === 'user';
     const [showCode, setShowCode] = React.useState(false);
     const [showSteps, setShowSteps] = React.useState(false);
+
+    console.log("Verdict Debug:", message.id, message.verdict);
 
     return (
         <motion.div
@@ -70,10 +72,31 @@ export default function MessageBubble({ message }: { message: Message }) {
                                     ) : null}
 
                                     {message.isLoading && (
-                                        <div className="flex space-x-2 items-center h-5 mt-2">
-                                            <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                                            <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                                            <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"></div>
+                                        <div className="flex flex-col mt-3 space-y-3 w-full max-w-sm">
+                                            {message.completedProcesses?.map((proc, idx) => (
+                                                <div key={`proc-${idx}-${proc}`} className="flex items-center text-sm text-slate-500">
+                                                    <CheckCircle className="w-4 h-4 mr-2 text-emerald-500 shrink-0" />
+                                                    <span className="truncate">{proc}</span>
+                                                </div>
+                                            ))}
+                                            {message.activeProcess && (
+                                                <div className="flex items-center text-sm text-indigo-600 font-medium">
+                                                    <Loader2 className="w-4 h-4 mr-2 animate-spin text-indigo-500 shrink-0" />
+                                                    <span className="truncate">{message.activeProcess}</span>
+                                                    <div className="flex space-x-1 items-center ml-2 h-4 shrink-0">
+                                                        <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                                        <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                                        <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"></div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {!message.activeProcess && (
+                                                <div className="flex space-x-2 items-center h-5 mt-2">
+                                                    <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                                    <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                                    <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"></div>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -97,7 +120,7 @@ export default function MessageBubble({ message }: { message: Message }) {
 
                                 {/* Expandable Meta Info (Code & Steps) */}
                                 {(message.code || (message.steps && message.steps.length > 0)) && (
-                                    <div className="flex flex-wrap gap-2">
+                                    <div className="flex flex-wrap gap-2 items-center">
                                         {message.code && (
                                             <button
                                                 onClick={() => setShowCode(!showCode)}
@@ -121,6 +144,7 @@ export default function MessageBubble({ message }: { message: Message }) {
                                         )}
                                     </div>
                                 )}
+
 
                                 <AnimatePresence>
                                     {showCode && message.code && (
@@ -177,6 +201,15 @@ export default function MessageBubble({ message }: { message: Message }) {
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
+                            </div>
+                        )}
+
+                        {/* Always Visible Confidence Score (At the very bottom) */}
+                        {!isUser && message.verdict?.confidence && (
+                            <div className="flex w-full mt-2">
+                                <div className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-500">
+                                    Confidence: <span className="text-slate-700 font-semibold capitalize">{message.verdict.confidence}</span>
+                                </div>
                             </div>
                         )}
                     </>

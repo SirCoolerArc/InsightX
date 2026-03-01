@@ -20,6 +20,7 @@ Usage:
 
 import traceback
 import queue
+import json
 import concurrent.futures
 
 try:
@@ -266,21 +267,33 @@ def run_agent_stream(user_query: str, conversation_context: dict = None):
             "cards": []
         }
 
-    yield _yield_event("status", {"message": "Generating follow-ups...", "step": "followups"})
-    try:
-        followups = generate_followups(user_query, main_res.get("last_result_summary", ""))
-    except Exception:
-        followups = []
+    yield _yield_event("status", {"message": "Finalizing insights & running quality review...", "step": "judge"})
+    
+    def _get_followups():
+        try:
+            return generate_followups(user_query, main_res.get("last_result_summary", ""))
+        except Exception:
+            return []
 
-    yield _yield_event("status", {"message": "Running quality review...", "step": "judge"})
-    verdict = {}
-    try:
-        # Pass the narrative text part to the judge
-        verdict = judge_response(user_query, parsed_narrative["narrative"], {"success": True, "raw_output": main_res.get("last_result_summary", "")})
-        if verdict.get("final_response"): 
-            parsed_narrative["narrative"] = verdict["final_response"]
-    except Exception:
-        verdict = {"judge_ran": False}
+    def _run_judge():
+        try:
+            judge_result_arg = {"success": True, "raw_output": main_res.get("last_result_summary", "")}
+            return judge_response(user_query, parsed_narrative["narrative"], result=judge_result_arg)
+        except Exception as e:
+            import traceback
+            with open("crash_debug.txt", "w") as f:
+                f.write(traceback.format_exc())
+            return {"judge_ran": False, "confidence": "low"}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        future_followups = executor.submit(_get_followups)
+        future_judge = executor.submit(_run_judge)
+        
+        followups = future_followups.result()
+        verdict = future_judge.result()
+
+    if verdict.get("final_response"): 
+        parsed_narrative["narrative"] = verdict["final_response"]
 
     final_payload = {
         "response": parsed_narrative.get("narrative", ""),
@@ -423,30 +436,43 @@ def run_agent(user_query: str, conversation_context: dict = None) -> dict:
         narrative = f"Analysis complete. Here are the results:\n\n{last_result_summary}"
 
     # -----------------------------------------------------------------------
-    # STEP 4: Generate follow-up suggestions
+    # STEP 4 & 5: Generate follow-up suggestions & Quality judge (Parallel)
     # -----------------------------------------------------------------------
-    try:
-        followups = generate_followups(user_query, last_result_summary)
-    except Exception:
-        followups = []
+    def _gen_follow():
+        try:
+            return generate_followups(user_query, last_result_summary)
+        except Exception:
+            return []
+            
+    def _run_jud():
+        try:
+            return judge_response(
+                original_query=user_query,
+                response=narrative,
+                result={"success": True, "raw_output": last_result_summary},
+            )
+        except Exception:
+            return {"judge_ran": False}
 
-    # -----------------------------------------------------------------------
-    # STEP 5: Quality judge (optional)
-    # -----------------------------------------------------------------------
-    verdict = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        f_follow = executor.submit(_gen_follow)
+        f_jud = executor.submit(_run_jud)
+        
+        followups = f_follow.result()
+        verdict = f_jud.result()
+
+    if verdict.get("final_response"):
+        narrative = verdict["final_response"]
+
     try:
-        verdict = judge_response(
-            original_query=user_query,
-            response=narrative,
-            result={"success": True, "raw_output": last_result_summary},
-        )
-        if verdict.get("final_response"):
-            narrative = verdict["final_response"]
+        parsed_narrative = json.loads(narrative) # narrative is already JSON from generate_narrative
     except Exception:
-        verdict = {"judge_ran": False}
+        parsed_narrative = {"narrative": narrative, "summary": "Analysis generated.", "cards": []}
 
     return {
-        "response": narrative,
+        "response": parsed_narrative.get("narrative", narrative),
+        "insight_summary": parsed_narrative.get("summary", ""),
+        "cards": parsed_narrative.get("cards", []),
         "result": {
             "success": True,
             "raw_output": last_result,

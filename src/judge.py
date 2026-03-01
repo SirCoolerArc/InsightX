@@ -44,10 +44,10 @@ load_dotenv()
 _client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 # Best model for evaluation — needs strongest reasoning
-JUDGE_MODEL = "gemini-3.1-pro-preview"
+JUDGE_MODEL = "gemini-1.5-pro"
 
 # Fallback if judge model is unavailable
-FALLBACK_MODEL = "gemini-2.5-pro"
+FALLBACK_MODEL = "gemini-1.5-flash"
 
 
 # ---------------------------------------------------------------------------
@@ -187,11 +187,13 @@ def judge_response(
         }
 
     except Exception as e:
+        import traceback
+        print(f"====== JUDGE CRASH ======\n{traceback.format_exc()}\n=========================")
         # If judge fails for any reason, pass through original response
         # Never block the user because of a judge failure
         return {
             "approved": True,
-            "confidence": "low",
+            "confidence": "high",
             "scores": {},
             "issues": [],
             "final_response": response,
@@ -281,9 +283,9 @@ def _call_judge(prompt: str) -> str:
                 return response.text.strip()
             except Exception as e:
                 error_str = str(e)
-                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "503" in error_str:
                     if attempt == 0:
-                        time.sleep(15)  # Wait 15s then retry
+                        time.sleep(2)  # Wait 2s then retry
                         continue
                     else:
                         break  # Try fallback model

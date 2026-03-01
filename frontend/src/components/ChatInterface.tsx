@@ -36,7 +36,9 @@ export default function ChatInterface() {
             id: tempId,
             role: 'assistant',
             content: '',
-            isLoading: true
+            isLoading: true,
+            activeProcess: 'Warming up code interpreter...',
+            completedProcesses: []
         }]);
 
         try {
@@ -64,6 +66,7 @@ export default function ChatInterface() {
 
             let done = false;
             let currentStepMessage = "Warming up code interpreter...";
+            let processes: string[] = [];
 
             while (!done) {
                 const { value, done: readerDone } = await reader.read();
@@ -81,6 +84,9 @@ export default function ChatInterface() {
                             try {
                                 const event = JSON.parse(dataStr);
                                 if (event.type === 'status') {
+                                    if (currentStepMessage && currentStepMessage !== event.data.message) {
+                                        processes = [...processes, currentStepMessage];
+                                    }
                                     currentStepMessage = event.data.message;
 
                                     // Update the temporary message to show progress
@@ -88,7 +94,9 @@ export default function ChatInterface() {
                                         msg.id === tempId
                                             ? {
                                                 ...msg,
-                                                content: `_${currentStepMessage}_`,
+                                                content: '',
+                                                activeProcess: currentStepMessage,
+                                                completedProcesses: processes,
                                                 isLoading: true
                                             }
                                             : msg

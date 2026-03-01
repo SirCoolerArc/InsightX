@@ -48,7 +48,7 @@ async def process_query_stream(req: QueryRequest):
     cm = get_session(session_id)
     context = cm.get_context()
 
-    async def event_generator():
+    def event_generator():
         try:
             # We must run the generator and yield its events formatted for SSE
             # run_agent_stream yields JSON strings.

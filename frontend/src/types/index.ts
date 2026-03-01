@@ -10,4 +10,6 @@ export interface Message {
     insight_summary?: string;
     cards?: any[];
     isLoading?: boolean;
+    activeProcess?: string;
+    completedProcesses?: string[];
 }

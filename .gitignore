@@ -7,3 +7,7 @@ __pycache__/
 dist/
 .DS_Store
 venv/
+crash_debug*.txt
+test_raw.txt
+test_clean.txt
+test_*.py
