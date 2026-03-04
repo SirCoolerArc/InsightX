@@ -150,7 +150,31 @@ Beyond text, the LLM is explicitly prompted to generate strictly typed JSON elem
 - **Native Charts:** For queries comparing dimensions or showing trends, the LLM generates a robust `<ChartRenderer>` config (Bar, Line, or Pie).
 - **Format Robustness:** The systems uses `strict=False` JSON parsing and regex-based extraction to ensure that even if the LLM includes raw control characters or markdown artifacts in the response, the UI parsing remains flawless.
 
-### 3.4 Calibrated Language
+### BRAIN-DS: Implementation Approach
+
+## 1. The D-S-I-R Reasoning Framework
+To ensure that generated insights are not just accurate but actionable for business leaders, BRAIN-DS implements the **D-S-I-R framework**:
+
+*   **DIRECT ANSWER**: The first sentence always contains the answer to the user's core query.
+*   **SUPPORTING METRICS**: Quantitative evidence extracted directly from the code execution results (e.g., "₹1.2M in failed P2P transactions").
+*   **INTERPRETATION**: Scientific calibration of the numbers using established EDA baselines.
+*   **RECOMMENDATION**: Actionable next steps for operations, risk, or marketing teams.
+
+## 2. Proactive Research Logic
+BRAIN-DS doesn't just wait for questions; it investigates. Every query triggers a parallel **Deep-Dive Worker** that:
+*   Identify Contextual Segments (e.g., if the user asks about Banks, the Deep-Dive checks States).
+*   Scans for Segment-level Anomalies (e.g., "Merchant Category 'Food' shows an 8% higher failure rate than average").
+*   Weaves these findings into the main narrative to provide "Bonus Intelligence."
+
+## 3. High-Depth Grounding
+*   **Calculated Memory**: The system Maintains a 3-turn context of both *Code* and *Results*, allowing the agent to perform complex longitudinal analysis (e.g., "Now compare that to the previous state").
+*   **Adjective Constraints**: The Narrative Architect is bound by a strict whitelist of adjectives mapped to specific data spreads (pp deltas), preventing linguistic hallucination.
+
+## 4. Security & Safety First
+*   **Zero-Trust Sandbox**: Total isolation of the execution environment.
+*   **Anti-Sycophancy Filter**: An audit layer that prevents the AI from blindly agreeing with user-provided premises.
+*   **PII & Fraud Guardrail**: Fraud-flagged transactions are treated as "For Review," and the system is strictly prohibited from "Confirming" fraud without human oversight.
+### 3.5 Calibrated Language
 
 The system uses calibrated language based on the magnitude of observed differences:
 
@@ -162,14 +186,14 @@ The system uses calibrated language based on the magnitude of observed differenc
 
 This prevents the system from dramatising the small differences inherent in the synthetic dataset.
 
-### 3.5 LLM-as-Judge Validation
+### 3.6 LLM-as-Judge Validation
 
-Every generated response passes through a Gemini 1.5 Pro judge before reaching the user. The judge evaluates four dimensions:
-
-- **Relevance:** Does the response directly answer the question asked?
-- **Grounding:** Are all cited statistics traceable to the computed data?
-- **Calibration:** Is language scaled appropriately to the magnitude of differences?
-- **Safety:** No causal claims unsupported by data, no fraud confirmation language
+Every generated response passes through a Gemini 1.5 Pro judge before reaching the user. The judge audits every claim against five core dimensions:
+1. **Relevance:** Does the narrative answer the user's intent?
+2. **Grounding:** Are all numbers in the text mathematically derived from the Pandas output? (Anti-Hallucination)
+3. **Calibration:** Is the language (e.g., "Significant profit") statistically justified by the data magnitudes?
+4. **Safety:** Does the agent avoid malicious prompt injection and maintain neutrality?
+5. **Logical Integrity:** Does the interpretation follow logically from the evidence? (Anti-Sycophancy)
 
 The judge either approves the response, automatically corrects it, or appends a caveat. It uses a tiered retry logic with Flash fallback to ensure 99.9% uptime for the review cycle.
 

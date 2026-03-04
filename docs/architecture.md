@@ -1,10 +1,9 @@
-# BRAIN-DS — System Architecture
+# BRAIN-DS: Technical Architecture
 
-## 1. Overview
+## 1. System Overview
+BRAIN-DS (Deterministic Systems for Digital Payments) is a high-depth AI analytics agent designed to provide business leaders with verifiable, executive-grade insights from large-scale digital payment datasets (e.g., UPI transactions). 
 
-BRAIN-DS is a conversational analytics system that allows business leaders to query 250,000 UPI transactions using natural language and receive accurate, explainable insights. The system is built on a **Code Interpreter** paradigm — an LLM writes pandas code, which is executed in a secure sandbox, and the results are narrated back in executive-grade language.
-
-**Core architectural principle:** The LLM generates code, never direct answers. All statistics are produced by pandas executing inside a sandboxed environment. An LLM-as-Judge validates every response before it reaches the user.
+Unlike standard LLM chatbots, BRAIN-DS utilizes a **Code-Interpreter Paradigm** combined with a **7-LLM Parallel Orchestration Engine** to ensure 100% computational grounding and sub-second perceived latency.
 
 ---
 
@@ -12,12 +11,11 @@ BRAIN-DS is a conversational analytics system that allows business leaders to qu
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       NEXT.JS UI LAYER                      │
+│                    NEXT.JS UI LAYER (Premium)               │
 │   frontend/src/                frontend/components/         │
-│   • Tailwind CSS styling       • ChatInterface.tsx          │
-│   • Framer Motion              • MessageBubble.tsx          │
-│   • User Input Box             • React Markdown Rendering   │
-│   • Code/Steps Expanders       • Followups List             │
+│   • Tailwind CSS styling       • ChartRenderer.tsx (Recharts)│
+│   • Framer Motion              • Masonry KPI Grid           │
+│   • Investigation Trace        • Dynamic Followups          │
 └──────────────────────────┬──────────────────────────────────┘
                            │ POST /api/query
                            ▼
@@ -25,178 +23,140 @@ BRAIN-DS is a conversational analytics system that allows business leaders to qu
 │                    FASTAPI BACKEND LAYER                    │
 │   api/main.py                                               │
 │   • CORS Middleware                                         │
-│   • Context handling using Session IDs                      │
-│   • Routes query to agent.run_agent()                       │
+│   • Session-based Thread Management                         │
+│   • Streamed SSE Responses                                  │
 └──────────────────────────┬──────────────────────────────────┘
                            │ user_query (str)
                            ▼
-
 ┌─────────────────────────────────────────────────────────────┐
-│                      AGENT                  [ORCHESTRATOR]  │
+│              PARALLEL AGENTIC ORCHESTRATOR                  │
 │   src/agent.py                                              │
-│   • Entry point: run_agent()                                │
-│   • Manages the generate → execute → validate loop          │
-│   • Up to MAX_RETRIES iterations on execution errors        │
-│   • Validates output alignment via code_planner             │
-│   • Calls judge for final quality check                     │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ user_query + schema + context
-                           ▼
-┌───────────────────────────────────────────────────────────────┐
-│                  CODE PLANNER                   [LLM #1]      │
-│   src/code_planner.py                                         │
-│   • generate_analysis_code() — Gemini writes pandas code      │
-│   • fix_code() — LLM corrects code that errored               │
-│   • validate_and_refine() — checks output answers question    │
-│   • Choice of chart type (bar/line/pie) based on query context│
-│   • Model: Gemini 2.5 Flash                                   │
-└──────────────────────────┬────────────────────────────────────┘
-                           │ generated Python code (str)
-                           ▼
+│   • Multi-stage Parallel Execution (7+ Gemini API calls)    │
+│   • Stage 1: Parallel Generation (Main + Proactive Deep Dive)│
+│   • Stage 2: Narrative Synthesis                            │
+│   • Stage 3: Parallel Validation (LLM Judge + Followups)    │
+└────────┬───────────────────────────────┬────────────────────┘
+         │                               │
+         ▼                               ▼
+┌───────────────────────┐       ┌───────────────────────┐
+│ MAIN ANALYST (LLM #1) │       │ DEEP DIVE (LLM #3)    │
+│ Code Generation       │       │ Proactive Research    │
+└────────┬──────────────┘       └────────┬──────────────┘
+         │                               │
+         ▼                               ▼
+┌───────────────────────┐       ┌───────────────────────┐
+│ VALIDATOR (LLM #2)    │       │ VALIDATOR (LLM #4)    │
+│ Semantic Check        │       │ Correlation Check     │
+└────────┬──────────────┘       └────────┬──────────────┘
+         │                               │
+         └───────────────┬───────────────┘
+                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     SANDBOX                [RESTRICTED ENV] │
-│   src/sandbox.py                                            │
-│   • execute_code() — runs code against the DataFrame        │
-│   • Restricted builtins (no open, exec, eval, import)       │
-│   • Only pandas, numpy, math, datetime available            │
-│   • 30-second timeout with thread-based enforcement         │
-│   • Captures stdout + result + error                        │
-│   • Handles DataFrame, Series, scalar, dict results         │
-│   • format_result_for_display() — formats for LLM/UI        │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ execution result (dict)
-                           ▼
-                  [If error → fix_code() → retry]
-                  [If success → validate_and_refine()]
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│          PARALLEL ORCHESTRATION LAYER      [THREADS]        │
-│   src/agent.py                                              │
-│   • Concurrent execution of Narrative, Judge, and Followups │
-│   • Sub-second latency for complex review cycles            │
-└──────────────┬───────────────┬────────────────┬─────────────┘
-               │               │                │
-┌──────────────▼───────┐┌──────▼────────┐┌──────▼────────┐
-│    NARRATIVE GEN     ││ JUDGE (LLM #2) │ FOLLOWUPS GEN │
-│   Gemini 2.5 Flash   ││Gemini 2.5 Flash│Gemini 2.5 Flash│
-└──────────────┬───────┘└──────┬────────┘└──────┬────────┘
-               │               │                │
-               └───────────────┴────────────────┘
-                               │
-                               ▼
-                        Back to UI Layer
+│             D-S-I-R NARRATIVE ARCHITECT (LLM #5)            │
+│   src/code_planner.py -> generate_narrative()               │
+│   • Weaves main data and research into executive insight    │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+          ┌───────────────┴───────────────┐
+          ▼                               ▼
+ ┌────────────────────────┐       ┌────────────────────────┐
+ │   LLM-AS-JUDGE (LLM #6)│       │  FOLLOW-UP GEN (LLM #7)│
+ │   5-Dimensional Audit  │       │  Contextual Prediction │
+ └────────────────────────┘       └────────────────────────┘
+                          │                 │
+                          └────────┬────────┘
+                                   ▼
+ ┌─────────────────────────────────────────────────────────────┐
+ │                FINAL EXECUTIVE INSIGHT (UI)                 │
+ │   • Calibrated D-S-I-R Narrative                            │
+ │   • Insight Cards (Masonry) & Interaction Charts            │
+ └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Module Descriptions
+## 3. The 7-LLM Parallel Orchestration Engine
+The core of BRAIN-DS is its multi-agent pipeline, which collapses a sequential reasoning process into three parallel stages to optimize both depth and speed.
 
-### `src/agent.py`
-The orchestration layer and main entry point. Receives the user query, loads the DataFrame, builds schema and conversation context, then runs the generate → execute → validate loop. On execution errors, asks the code planner to fix the code (up to `MAX_RETRIES` attempts). On successful execution, validates that the output actually answers the question. Finally calls the narrator and judge before returning the complete result dict.
+### Stage 1: Parallel Discovery (Concurrency: 2)
+*   **LLM #1: Primary Code Planner**: Generates deterministic Python/Pandas logic using dynamically injected schema metadata and P90 EDA benchmarks.
+*   **LLM #2: Logic Validator**: Independently audits the Planner’s output to ensure semantic alignment with the user's intent before execution.
+*   **LLM #3: Deep-Dive Researcher**: A context-aware agent that scans for anomalies or categorical correlations (e.g., State-wise or Network-wise disparities) in parallel with the main query.
+*   **LLM #4: Research Auditor**: Validates the technical integrity of the Deep-Dive findings.
 
-Key functions: `run_agent()`, `_error_result()`, `format_investigation_trace()`
+### Stage 2: Narrative Synthesis
+*   **LLM #5: Narrative Architect**: Synthesizes the raw data from all discovery workers into a structured D-S-I-R (Direct, Support, Interpret, Recommend) response.
 
-### `src/code_planner.py`
-The LLM interface layer. All Gemini API calls for code generation, error correction, output validation, narrative generation, and follow-up suggestion happen here. Injects a comprehensive schema description (column names, dtypes, valid values, sample rows) into every prompt to ground the LLM. Includes automatic retry logic for rate-limit (429) errors.
-
-Key functions: `generate_analysis_code()`, `fix_code()`, `validate_and_refine()`, `generate_narrative()`, `generate_followups()`, `get_schema_prompt()`, `build_conversation_context()`
-
-### `src/sandbox.py`
-The security layer. Executes LLM-generated pandas code in a restricted environment. Only whitelisted builtins are available — no file I/O (`open`), no dynamic execution (`exec`, `eval`), no imports, no system access. Code must assign its answer to a `result` variable. Enforces a 30-second timeout using threads. Handles multiple result types (DataFrame, Series, scalar, dict) and converts numpy/pandas types to JSON-safe Python natives.
-
-Key functions: `execute_code()`, `format_result_for_display()`, `_make_json_safe()`
-
-### `src/judge.py`
-The quality validation layer. Every response passes through the judge before reaching the user. Evaluates Relevance, Grounding, Calibration, Safety, and Logical Integrity (Anti-Sycophancy). Automatically corrects responses with critical issues or appends caveats for minor ones. Uses **Gemini 2.5 Flash** for high-reasoning evaluation.
-
-Key functions: `judge_response()`, `format_judge_badge()`, `get_judge_expander_content()`
-
-### `src/data_loader.py`
-The foundation layer. Loads the CSV once into memory and caches it for the session lifetime. Handles column renaming, timestamp parsing (`DD-MM-YYYY HH.MM`), and derives convenience columns like `is_failed`. Defines all EDA-derived constants (`HIGH_VALUE_THRESHOLD`, `OVERALL_FAILURE_RATE`, etc.) and valid categorical values used for entity validation.
-
-Key functions: `get_dataframe()`, `get_subset()`, `sample_size_warning()`
-
-### `src/conversation_manager.py`
-The memory layer. Maintains conversation state as a `Turn` dataclass list. Tracks active filters, last metric, and code history across turns to enable follow-up queries. Provides context to the code planner so follow-up questions resolve correctly without the user repeating earlier constraints.
-
-Key functions: `ConversationManager.add_turn()`, `.get_context()`, `.get_history()`, `.reset()`
-
-### `api/main.py`
-The FastAPI application entry point. Receives POST requests from the Next.js frontend, manages conversation state context per session, routes the query into `run_agent()`, and returns standard JSON responses.
-
-### `frontend/src/components/*`
-The Next.js React frontend. Features a premium professional aesthetic using Tailwind CSS and Framer Motion. Contains `ChatInterface.tsx` and `MessageBubble.tsx` to handle agent streaming, markdown rendering, native JSON charts via Recharts (`ChartRenderer.tsx`), and a dynamic masonry grid layout for KPI blocks (`InsightCards.tsx`).
+### Stage 3: Quality Audit (Concurrency: 2)
+*   **LLM #6: Structural Judge**: A 5-Dimensional Auditor that enforces strict rules for Grounding (no uncomputed numbers), Calibration (adjective thresholds for 0.5pp/2pp deltas), and Logic Integrity.
+*   **LLM #7: Contextual Predictor**: Anticipates the next three strategic follow-up questions to minimize user friction.
 
 ---
 
-## 4. Data Flow — Detailed Example
+## 4. Final Executive Insight (The Output Layer)
+This is the final terminal stage where the unified intelligence is delivered to the business leader:
+*   **Narrative**: Executive-grade D-S-I-R text that is scientifically calibrated.
+*   **KPI Masonry**: dynamic metrics, key-value tables, and insight lists.
+*   **Interaction Charts**: Recharts-based visualizations tailored to the data.
+
+---
+
+## 4. The Secure Code Execution Sandbox
+To ensure reliability and security, all generated code is executed within a **Zero-Trust Python Sandbox (`sandbox.py`)**.
+
+*   **Isolation**: Uses a strict `_SAFE_BUILTINS` whitelist (blocking `eval`, `exec`, `open`, `__import__`, `globals`, `locals`).
+*   **Data Integrity**: Injects a `df.copy()` of the 250k row dataset into memory to prevent accidental or malicious data mutation.
+*   **Self-Healing Loop**: If execution fails, the system captures the Python Traceback, identifies the bug, and patches itself up to 3 times (`MAX_RETRIES: 3`).
+*   **Resource Guard**: Thread-based 30-second timeout to prevent infinite loops or explosive computations.
+
+---
+
+## 5. Grounding & Data Science Layer
+*   **EDA Anchors**: The system uses 14 pre-computed constants (e.g., `HIGH_VALUE_THRESHOLD: 3236.00`, `OVERALL_FAILURE_RATE: 4.95%`) for statistical anchoring.
+*   **Scientific Calibration**: Insights are strictly calibrated based on percentage point (pp) deltas:
+    *   Delta < 0.5pp → "Marginal"
+    *   Delta 0.5 - 2pp → "Notable"
+    *   Delta > 2pp → "Significant"
+
+---
+
+## 6. Visual & Interface Layer
+*   **Next.js & Recharts**: Real-time rendering of Line, Bar, and Pie charts driven by LLM-generated JSON configurations.
+*   **SSE Streaming**: Utilizes Server-Sent Events (SSE) to provide real-time updates of the agent’s reasoning steps (Progress Badges and Investigation Trace).
+*   **Responsive Masonry**: A 2-column masonry grid for KPI cards (Metric Groups, Key-Value tables, and Insight Lists).
+
+---
+
+## 7. Data Flow — Detailed Example
 
 **Query:** *"Compare failure rates for HDFC vs SBI on weekends"*
 
-```
-1. agent.py → run_agent()
-   - Loads DataFrame via data_loader.get_dataframe()
-   - Builds schema prompt via code_planner.get_schema_prompt(df)
-   - Builds conversation context from prior turns
-
-2. code_planner.py → generate_analysis_code()
-   - Sends query + schema + context to Gemini 2.5 Flash
-   - Gemini generates pandas code:
-     weekend_df = df[df['is_weekend'] == 1]
-     banks = weekend_df[weekend_df['sender_bank'].isin(['HDFC', 'SBI'])]
-     result = banks.groupby('sender_bank')['is_failed'].agg(['sum','count'])
-     result['failure_rate'] = (result['sum'] / result['count'] * 100).round(2)
-
-3. sandbox.py → execute_code()
-   - Executes code in restricted environment with only pandas/numpy
-   - Returns: {success: True, result: DataFrame, stdout: "", error: None}
-
-4. code_planner.py → validate_and_refine()
-   - Checks: does the output answer "Compare failure rates for HDFC vs SBI
-     on weekends"?
-   - If misaligned, generates corrected code and re-executes
-
-5. code_planner.py → generate_narrative()
-   - Receives computed DataFrame + code + stdout
-   - Produces D-S-I-R narrative: "HDFC has a 5.01% failure rate on weekends
-     (542 failed / 10,823 total), compared to SBI's 5.15% (919 / 17,829)..."
-
-6. judge.py → judge_response()
-   - Evaluates narrative against computed data
-   - Checks calibration: 0.14pp spread → must use "marginal"
-   - Approves or corrects
-
-7. conversation_manager.py → add_turn()
-   - Records query, code, result, and response
-   - Updates active context for follow-up queries
-```
+1.  **Orchestrator (`agent.py`)**: Receives query, loads Cached DataFrame, and injects Schema Context.
+2.  **Code Planner (LLM #1)**: Generates Pandas code using `is_weekend` and `sender_bank` filters.
+3.  **Sandbox (`sandbox.py`)**: Executes code in an isolated environment; returns a computed results dictionary.
+4.  **Logic Validator (LLM #2)**: Verifies that the computed data semantically answers the weekend comparison.
+5.  **Narrative Architect (LLM #5)**: Converts raw numbers into a D-S-I-R narrative (e.g., "HDFC failure rate is 5.01% vs SBI 5.15%").
+6.  **Structural Judge (LLM #6)**: Cross-references the narrative against the computed result to ensure 100% grounding.
+7.  **SSE Bridge**: Streams the final insight, cards, and Recharts config to the UI.
 
 ---
 
-## 5. Key Design Decisions
+## 8. Key Design Decisions
 
-### Why Code Interpreter over Structured Intent Parsing?
-The structured intent parser (query_parser → analytics_engine) required manually coding every possible query pattern into six intent types. The code interpreter approach lets the LLM write arbitrary pandas code, handling any question the user can think of — including novel multi-step analyses that don't fit neatly into predefined categories.
-
-### Why a Sandbox?
-LLM-generated code cannot be trusted to run unrestricted. The sandbox removes access to file I/O, network calls, imports, and system functions. Only data analysis builtins (pandas, numpy, math) are available, with a 30-second timeout to prevent infinite loops.
-
-### Why a Validate-and-Refine Step?
-LLMs sometimes generate code that runs without error but doesn't actually answer the question (e.g., computing total amount when asked for failure rate). The validation step catches these semantic mismatches and triggers a code correction before narrating.
-
-### Why Separate Code Generation from Narrative?
-Separating code generation (LLM #1) from narration (LLM #2) enforces the principle that all numbers come from deterministic pandas execution, not from the model's memory. The narrator only sees computed results.
-
-### Why an LLM Judge?
-Automated quality validation catches hallucinated numbers, overclaimed significance, and unsafe fraud language before they reach the user. The judge never blocks — if it fails, the original response passes through unchanged.
-
-### Why Module-Level DataFrame Caching?
-FastAPI maintains application state in memory across requests. Without caching, the 250k-row CSV would be re-read from disk on every query. The module-level cache in `data_loader.py` ensures it is read exactly once when the server starts.
+*   **Code Interpreter Paradigm**: Eliminates the brittleness of intent-parsing by allowing the AI to write arbitrary, verifiable data-science logic.
+*   **Module-Level Caching**: The 250k-row dataset is cached in `data_loader.py` memory, ensuring sub-second data access across API calls.
+*   **Anti-Sycophancy Filter**: The Judge layer is instructed to challenge any leading questions or incorrect premises provided by the user.
 
 ---
 
-## 6. Technology Stack
+## 9. Limitations & Guardrails
+*   **Descriptive Focus**: The system is optimized for historical descriptive analytics; no predictive time-series modeling is implemented.
+*   **Sample Size Guards**: Segments with `< 200` transactions trigger an automated "Low Confidence" warning.
+*   **Deterministic Only**: If the LLM cannot generate valid code for a query, the system returns a graceful "Out of Domain" notification rather than hallucinating an answer.
+
+---
+
+## 10. Technology Stack
 
 | Component | Technology | Version |
 |---|---|---|
@@ -213,7 +173,7 @@ FastAPI maintains application state in memory across requests. Without caching, 
 
 ---
 
-## 7. Project Structure
+## 11. Project Structure
 
 ```
 insightx/
@@ -255,28 +215,3 @@ insightx/
 ├── requirements.txt
 └── README.md
 ```
-
----
-
-## 8. Security Model
-
-The sandbox enforces the following restrictions on LLM-generated code:
-
-| Category | Allowed | Blocked |
-|---|---|---|
-| Builtins | `int`, `float`, `str`, `list`, `dict`, `len`, `range`, `sorted`, `min`, `max`, `sum`, `abs`, `round`, `enumerate`, `zip`, `map`, `filter`, `print` | `open`, `exec`, `eval`, `compile`, `__import__`, `globals`, `locals`, `exit`, `quit` |
-| Libraries | `pandas` (as `pd`), `numpy` (as `np`), `math`, `datetime` | All other imports blocked |
-| Execution | 30-second timeout | Infinite loops killed |
-| File I/O | None | All file operations blocked |
-| Network | None | All network access blocked |
-
----
-
-## 9. Limitations
-
-- **Synthetic data uniformity:** Failure rates differ by less than 0.5pp across most dimensions, limiting the drama of insights. The system reports this honestly.
-- **No forecasting:** All insights are descriptive. No time-series modelling or predictive capability.
-- **Fraud flag sparsity:** Only 480 flagged transactions (0.19%) means sub-segment fraud analysis has very small sample sizes.
-- **10 states only:** The dataset covers 10 Indian states. Geographic insights are limited to this scope.
-- **Code execution risk:** Despite sandbox restrictions, LLM-generated code carries inherent risk. The whitelist approach minimises this.
-- **API rate limits:** Free-tier Gemini API has request quotas. The retry-with-backoff logic in `code_planner.py` mitigates transient 429 errors.

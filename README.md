@@ -27,13 +27,20 @@ BRAIN-DS is built on a **Code Interpreter** paradigm — the LLM generates code,
 
 ```
 User Query
-    → Next.js UI      [Sends query to FastAPI backend]
-    → Code Planner   [Gemini 2.5 Flash: writes pandas code]
-    → Sandbox         [Executes code safely against DataFrame]
-    → Parallel Tasks  [Orchestrates Narrative, Judge, and Follow-ups concurrently]
-    → Narrative Gen   [Gemini 2.5 Flash: Data → D-S-I-R narrative, Cards, and Charts]
-    → Judge           [Gemini 2.5 Flash: validates accuracy & calibration]
-    → Next.js UI      [Interactive chat renders text and visual cards]
+  → Next.js UI
+  → FastAPI Backend
+  → Parallel Stage 1: Discovery
+      ├─ LLM #1: Code Planner (Deterministic Execution)
+      ├─ LLM #2: Logic Validator
+      ├─ LLM #3: Deep-Dive Researcher (Proactive Segmentation)
+      └─ LLM #4: Research Auditor
+  → Parallel Stage 2: Synthesis
+      └─ LLM #5: Narrative Architect (D-S-I-R Logic)
+  → Parallel Stage 3: Quality Audit
+      ├─ LLM #6: Structural Judge (5-Dimensional Audit)
+      └─ LLM #7: Contextual Predictor (Strategic Follow-ups)
+  → Final Executive Insight (D-S-I-R Narrative + KPI Cards)
+  → Next.js UI (Streaming SSE Updates)
 ```
 
 All statistics come exclusively from pandas executing in a restricted sandbox — the LLM only writes the code and narrates the results.
@@ -154,38 +161,36 @@ npm install
 # Start the Next.js development server
 npm run dev
 ```
-
-The application is now accessible at [http://localhost:3000](http://localhost:3000).
-
----
-
-## How It Works
-
-1. **You ask a question** in natural language
-2. **Gemini writes pandas code** to answer your question
-3. **Code executes in a sandbox** — restricted environment, no file/network access, 30s timeout
-4. **If execution fails**, the LLM fixes the code and retries (up to 3 attempts)
-5. **If output doesn't match the question**, the LLM regenerates corrected code
-6. **Gemini narrates the results** in executive D-S-I-R format (Direct answer → Supporting metrics → Interpretation → Recommendation)
-7. **An LLM Judge validates** the response for accuracy, calibration, and safety before displaying
+*The application is now accessible at [http://localhost:3000](http://localhost:3000).*
 
 ---
 
-## Tech Stack
+## 🚀 Key Technological Breakthroughs
 
-| Component | Technology |
-|---|---|
-| Language | Python 3.12, TypeScript |
-| Data computation | Pandas (in-sandbox execution) |
-| LLM — Code Generation & Narration | Google Gemini 2.5 Flash |
-| LLM — Quality Judge | Google Gemini 2.5 Flash |
-| UI | Next.js, Tailwind CSS, Framer Motion |
-| API Layer | FastAPI, Uvicorn |
-| API client | google-genai |
+### 1. The 7-LLM Parallel Engine
+A high-concurrency orchestration layer that collapses complex reasoning into three parallel stages:
+*   **Discovery**: Concurrent Code Execution (Planner) + Proactive Research (Deep-Dive).
+*   **Synthesis**: Narrative Architect weaving multiple data streams via D-S-I-R logic.
+*   **Audit**: Concurrent Quality Judging (5-Dimensions) + Contextual Follow-up Prediction.
+
+### 2. Zero-Trust Code Interpreter Sandbox
+All insights are grounded in verified Python execution within a hardened sandbox:
+*   **Isolated Builtins**: Blocking non-essential Python functions (`eval`, `exec`, `import`).
+*   **Self-Healing**: Automated traceback reading and code patching (`MAX_RETRIES: 3`).
+*   **Memory Integrity**: Non-mutable dataset injection using `df.copy()`.
+
+### 3. Scientific Grounding (The Calibration Layer)
+*   **EDA Baseline Anchors**: Every insight is anchored to 14 pre-computed statistical constants.
+*   **Precision Adjectives**: Enforced adjective thresholds for deltas (Marginal < 0.5pp | Significant > 2pp).
+
+### 4. Visual Excellence
+*   **Real-time SSE Streaming**: Direct visibility into the agent's logic steps.
+*   **Native Chart Rendering**: Dynamic Bar/Line/Pie charts built via Recharts.
+*   **Masonry Insights Grid**: Context-rich UI cards for metrics, breakdowns, and anomalies.
 
 ---
 
-## Key Dataset Facts
+##  Dataset Insights
 
 | Metric | Value |
 |---|---|
@@ -200,21 +205,20 @@ The application is now accessible at [http://localhost:3000](http://localhost:30
 
 ---
 
-## Team
+## 👥 Team
 
-Built by: <br>
-Rishabh Kumar | 24B2419 <br>
-Subodh Patel | 24B2509 <br>
-Dhruva Reddy | 24B2433 <br>
-Abhijeet Singh | 24B2468 <br>
+Built by:  
+Rishabh Kumar | 24B2419  
+Subodh Patel | 24B2509  
+Dhruva Reddy | 24B2433  
+Abhijeet Singh | 24B2468  
 
 ---
 
-## Important Notes
+## 📌 Important Notes
 
 - **Data privacy:** The dataset is synthetic and does not contain real user data.
 - **Fraud flags:** `fraud_flag = 1` means flagged for automated review, not confirmed fraud.
-- **API costs:** Standard queries-   **AI Core**: Gemini 2.5 Flash (for code generation, insight narration, and quality judging).
- The validate-and-refine step adds a 4th call when needed. Error retries add fix_code calls.
-- **Rate limits:** If you hit API quota limits during development, the system has built-in retry-with-backoff logic for 429 errors.
-- **Sandbox security:** LLM-generated code runs in a restricted environment with whitelisted builtins only — no file I/O, no network, no imports, 30-second timeout.
+- **API costs:** Standard queries involve 3 parallel Gemini 2.5 Flash calls. The judge and follow-up steps add 4 more calls.
+- **Rate limits:** Built-in retry-with-backoff logic handles 429 errors.
+- **Sandbox security:** Generative code runs in a restricted environment with whitelisted builtins — no file I/O, no network, 30s timeout.
