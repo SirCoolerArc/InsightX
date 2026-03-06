@@ -295,25 +295,42 @@ def run_agent_stream(user_query: str, conversation_context: dict = None):
     if verdict.get("final_response"): 
         parsed_narrative["narrative"] = verdict["final_response"]
 
+    # --- TRUNCATION LOGIC TO PREVENT FRONTEND JSON PARSE ERRORS (64KB LIMIT) ---
+    raw_res = main_res.get("last_result")
+    if isinstance(raw_res, list) and len(raw_res) > 100:
+        raw_res = raw_res[:100] + [{"_INFO": f"... truncated {len(raw_res) - 100} more items to prevent session crash"}]
+        
+    final_steps = main_res.get("steps", [])
+    for s in final_steps:
+        if isinstance(s.get("result"), dict) and s["result"].get("data"):
+            if isinstance(s["result"]["data"], list) and len(s["result"]["data"]) > 50:
+                s["result"]["data"] = s["result"]["data"][:50] + [{"_INFO": "truncated"}]
+
     final_payload = {
         "response": parsed_narrative.get("narrative", ""),
         "insight_summary": parsed_narrative.get("summary", ""),
         "cards": parsed_narrative.get("cards", []),
         "result": {
             "success": True,
-            "raw_output": main_res.get("last_result"),
+            "raw_output": raw_res,
             "summary": main_res.get("last_result_summary"),
             "code": main_res.get("last_code"),
         },
         "followups": followups,
         "mode": "code_interpreter",
-        "steps": main_res.get("steps", []),
+        "steps": final_steps,
         "verdict": verdict,
         "code": main_res.get("last_code"),
     }
     
+    event_json = _yield_event("final", final_payload)
+    if len(event_json) > 60000:
+        # Emergency truncation if still too large
+        final_payload["result"]["raw_output"] = "Data too large for full preview. See summary."
+        event_json = _yield_event("final", final_payload)
     
-    yield _yield_event("final", final_payload)
+    
+    yield event_json
 
 
 def run_agent(user_query: str, conversation_context: dict = None) -> dict:

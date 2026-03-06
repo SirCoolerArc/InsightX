@@ -67,73 +67,84 @@ export default function ChatInterface() {
             let done = false;
             let currentStepMessage = "Warming up code interpreter...";
             let processes: string[] = [];
+            let buffer = '';
 
             while (!done) {
                 const { value, done: readerDone } = await reader.read();
                 done = readerDone;
 
                 if (value) {
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split('\n');
+                    buffer += decoder.decode(value, { stream: true });
+                    
+                    // SSE events are separated by double newline
+                    const parts = buffer.split('\n\n');
+                    
+                    // The last part might be incomplete, so keep it in the buffer
+                    buffer = parts.pop() || '';
 
-                    for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const dataStr = line.replace('data: ', '').trim();
-                            if (!dataStr) continue;
-
-                            try {
-                                const event = JSON.parse(dataStr);
-                                if (event.type === 'status') {
-                                    if (currentStepMessage && currentStepMessage !== event.data.message) {
-                                        processes = [...processes, currentStepMessage];
-                                    }
-                                    currentStepMessage = event.data.message;
-
-                                    // Update the temporary message to show progress
-                                    setMessages(prev => prev.map(msg =>
-                                        msg.id === tempId
-                                            ? {
-                                                ...msg,
-                                                content: '',
-                                                activeProcess: currentStepMessage,
-                                                completedProcesses: processes,
-                                                isLoading: true
-                                            }
-                                            : msg
-                                    ));
-                                } else if (event.type === 'final') {
-                                    const { response: botText, insight_summary, cards, result, code, steps, verdict, followups } = event.data;
-
-                                    setMessages(prev => prev.map(msg =>
-                                        msg.id === tempId
-                                            ? {
-                                                ...msg,
-                                                content: botText,
-                                                insight_summary,
-                                                cards,
-                                                result,
-                                                code,
-                                                steps,
-                                                verdict,
-                                                followups,
-                                                isLoading: false
-                                            }
-                                            : msg
-                                    ));
-                                } else if (event.type === 'error') {
-                                    setMessages(prev => prev.map(msg =>
-                                        msg.id === tempId
-                                            ? {
-                                                ...msg,
-                                                content: event.data.message,
-                                                isLoading: false
-                                            }
-                                            : msg
-                                    ));
-                                }
-                            } catch (e) {
-                                console.error("Error parsing SSE event data:", e, dataStr);
+                    for (const eventBlock of parts) {
+                        const lines = eventBlock.split('\n');
+                        let dataStr = '';
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                dataStr += line.replace('data: ', '');
                             }
+                        }
+
+                        if (!dataStr.trim()) continue;
+
+                        try {
+                            const event = JSON.parse(dataStr);
+                            if (event.type === 'status') {
+                                if (currentStepMessage && currentStepMessage !== event.data.message) {
+                                    processes = [...processes, currentStepMessage];
+                                }
+                                currentStepMessage = event.data.message;
+
+                                setMessages(prev => prev.map(msg =>
+                                    msg.id === tempId
+                                        ? {
+                                            ...msg,
+                                            content: '',
+                                            activeProcess: currentStepMessage,
+                                            completedProcesses: processes,
+                                            isLoading: true
+                                        }
+                                        : msg
+                                ));
+                            } else if (event.type === 'final') {
+                                const { response: botText, insight_summary, cards, result, code, steps, verdict, followups } = event.data;
+
+                                setMessages(prev => prev.map(msg =>
+                                    msg.id === tempId
+                                        ? {
+                                            ...msg,
+                                            content: botText,
+                                            insight_summary,
+                                            cards,
+                                            result,
+                                            code,
+                                            steps,
+                                            verdict,
+                                            followups,
+                                            isLoading: false
+                                        }
+                                        : msg
+                                ));
+                            } else if (event.type === 'error') {
+                                setMessages(prev => prev.map(msg =>
+                                    msg.id === tempId
+                                        ? {
+                                            ...msg,
+                                            content: event.data.message,
+                                            isLoading: false
+                                        }
+                                        : msg
+                                ));
+                            }
+                        } catch (e) {
+                            console.error("Error parsing SSE event data:", e, dataStr);
                         }
                     }
                 }
