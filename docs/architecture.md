@@ -3,7 +3,7 @@
 ## 1. System Overview
 BRAIN-DS (Deterministic Systems for Digital Payments) is a high-depth AI analytics agent designed to provide business leaders with verifiable, executive-grade insights from large-scale digital payment datasets (e.g., UPI transactions). 
 
-Unlike standard LLM chatbots, BRAIN-DS utilizes a **Code-Interpreter Paradigm** combined with a **7-LLM Parallel Orchestration Engine** to ensure 100% computational grounding and sub-second perceived latency.
+Unlike standard LLM chatbots, BRAIN-DS utilizes a **Code-Interpreter Paradigm** combined with a **7-agent parallel orchestrator** to ensure 100% computational grounding and sub-second perceived latency.
 
 ---
 
@@ -39,20 +39,20 @@ Unlike standard LLM chatbots, BRAIN-DS utilizes a **Code-Interpreter Paradigm** 
          │                               │
          ▼                               ▼
 ┌───────────────────────┐       ┌───────────────────────┐
-│ MAIN ANALYST (LLM #1) │       │ DEEP DIVE (LLM #3)    │
+│ MAIN ANALYST (Agent #1) │       │ DEEP DIVE (Agent #3)    │
 │ Code Generation       │       │ Proactive Research    │
 └────────┬──────────────┘       └────────┬──────────────┘
          │                               │
          ▼                               ▼
 ┌───────────────────────┐       ┌───────────────────────┐
-│ VALIDATOR (LLM #2)    │       │ VALIDATOR (LLM #4)    │
+│ VALIDATOR (Agent #2)    │       │ VALIDATOR (Agent #4)    │
 │ Semantic Check        │       │ Correlation Check     │
 └────────┬──────────────┘       └────────┬──────────────┘
          │                               │
          └───────────────┬───────────────┘
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
-│             D-S-I-R NARRATIVE ARCHITECT (LLM #5)            │
+│             D-S-I-R NARRATIVE ARCHITECT (Agent #5)            │
 │   src/code_planner.py -> generate_narrative()               │
 │   • Weaves main data and research into executive insight    │
 └────────────────────────┬────────────────────────────────────┘
@@ -60,7 +60,7 @@ Unlike standard LLM chatbots, BRAIN-DS utilizes a **Code-Interpreter Paradigm** 
           ┌───────────────┴───────────────┐
           ▼                               ▼
  ┌────────────────────────┐       ┌────────────────────────┐
- │   LLM-AS-JUDGE (LLM #6)│       │  FOLLOW-UP GEN (LLM #7)│
+ │   LLM-AS-JUDGE (Agent #6)│       │  FOLLOW-UP GEN (Agent #7)│
  │   5-Dimensional Audit  │       │  Contextual Prediction │
  └────────────────────────┘       └────────────────────────┘
                           │                 │
@@ -75,21 +75,21 @@ Unlike standard LLM chatbots, BRAIN-DS utilizes a **Code-Interpreter Paradigm** 
 
 ---
 
-## 3. The 7-LLM Parallel Orchestration Engine
+## 3. The 7-Agent Parallel Orchestrator
 The core of BRAIN-DS is its multi-agent pipeline, which collapses a sequential reasoning process into three parallel stages to optimize both depth and speed.
 
 ### Stage 1: Parallel Discovery (Concurrency: 2)
-*   **LLM #1: Primary Code Planner**: Generates deterministic Python/Pandas logic using dynamically injected schema metadata and P90 EDA benchmarks.
-*   **LLM #2: Logic Validator**: Independently audits the Planner’s output to ensure semantic alignment with the user's intent before execution.
-*   **LLM #3: Deep-Dive Researcher**: A context-aware agent that scans for anomalies or categorical correlations (e.g., State-wise or Network-wise disparities) in parallel with the main query.
-*   **LLM #4: Research Auditor**: Validates the technical integrity of the Deep-Dive findings.
+*   **Agent #1: Primary Code Planner**: Generates deterministic Python/Pandas logic using dynamically injected schema metadata and P90 EDA benchmarks.
+*   **Agent #2: Logic Validator**: Independently audits the Planner’s output to ensure semantic alignment with the user's intent before execution.
+*   **Agent #3: Deep-Dive Researcher**: A context-aware agent that scans for anomalies or categorical correlations (e.g., State-wise or Network-wise disparities) in parallel with the main query.
+*   **Agent #4: Research Auditor**: Validates the technical integrity of the Deep-Dive findings.
 
 ### Stage 2: Narrative Synthesis
-*   **LLM #5: Narrative Architect**: Synthesizes the raw data from all discovery workers into a structured D-S-I-R (Direct, Support, Interpret, Recommend) response.
+*   **Agent #5: Narrative Architect**: Synthesizes the raw data from all discovery workers into a structured D-S-I-R (Direct, Support, Interpret, Recommend) response.
 
 ### Stage 3: Quality Audit (Concurrency: 2)
-*   **LLM #6: Structural Judge**: A 5-Dimensional Auditor that enforces strict rules for Grounding (no uncomputed numbers), Calibration (adjective thresholds for 0.5pp/2pp deltas), and Logic Integrity.
-*   **LLM #7: Contextual Predictor**: Anticipates the next three strategic follow-up questions to minimize user friction.
+*   **Agent #6: Structural Judge**: A 5-Dimensional Auditor that enforces strict rules for Grounding (no uncomputed numbers), Calibration (adjective thresholds for 0.5pp/2pp deltas), and Logic Integrity.
+*   **Agent #7: Contextual Predictor**: Anticipates the next three strategic follow-up questions to minimize user friction.
 
 ---
 
@@ -132,11 +132,11 @@ To ensure reliability and security, all generated code is executed within a **Ze
 **Query:** *"Compare failure rates for HDFC vs SBI on weekends"*
 
 1.  **Orchestrator (`agent.py`)**: Receives query, loads Cached DataFrame, and injects Schema Context.
-2.  **Code Planner (LLM #1)**: Generates Pandas code using `is_weekend` and `sender_bank` filters.
+2.  **Code Planner (Agent #1)**: Generates Pandas code using `is_weekend` and `sender_bank` filters.
 3.  **Sandbox (`sandbox.py`)**: Executes code in an isolated environment; returns a computed results dictionary.
-4.  **Logic Validator (LLM #2)**: Verifies that the computed data semantically answers the weekend comparison.
-5.  **Narrative Architect (LLM #5)**: Converts raw numbers into a D-S-I-R narrative (e.g., "HDFC failure rate is 5.01% vs SBI 5.15%").
-6.  **Structural Judge (LLM #6)**: Cross-references the narrative against the computed result to ensure 100% grounding.
+4.  **Logic Validator (Agent #2)**: Verifies that the computed data semantically answers the weekend comparison.
+5.  **Narrative Architect (Agent #5)**: Converts raw numbers into a D-S-I-R narrative (e.g., "HDFC failure rate is 5.01% vs SBI 5.15%").
+6.  **Structural Judge (Agent #6)**: Cross-references the narrative against the computed result to ensure 100% grounding.
 7.  **SSE Bridge**: Streams the final insight, cards, and Recharts config to the UI.
 
 ---

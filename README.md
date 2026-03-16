@@ -30,15 +30,15 @@ User Query
   → Next.js UI
   → FastAPI Backend
   → Parallel Stage 1: Discovery
-      ├─ LLM #1: Code Planner (Deterministic Execution)
-      ├─ LLM #2: Logic Validator
-      ├─ LLM #3: Deep-Dive Researcher (Proactive Segmentation)
-      └─ LLM #4: Research Auditor
+      ├─ Agent #1: Code Planner (Deterministic Execution)
+      ├─ Agent #2: Logic Validator
+      ├─ Agent #3: Deep-Dive Researcher (Proactive Segmentation)
+      └─ Agent #4: Research Auditor
   → Parallel Stage 2: Synthesis
-      └─ LLM #5: Narrative Architect (D-S-I-R Logic)
+      └─ Agent #5: Narrative Architect (D-S-I-R Logic)
   → Parallel Stage 3: Quality Audit
-      ├─ LLM #6: Structural Judge (5-Dimensional Audit)
-      └─ LLM #7: Contextual Predictor (Strategic Follow-ups)
+      ├─ Agent #6: Structural Judge (5-Dimensional Audit)
+      └─ Agent #7: Contextual Predictor (Strategic Follow-ups)
   → Final Executive Insight (D-S-I-R Narrative + KPI Cards)
   → Next.js UI (Streaming SSE Updates)
 ```
@@ -167,7 +167,7 @@ npm run dev
 
 ## 🚀 Key Technological Breakthroughs
 
-### 1. The 7-LLM Parallel Engine
+### 1. The 7-Agent Parallel Orchestrator
 A high-concurrency orchestration layer that collapses complex reasoning into three parallel stages:
 *   **Discovery**: Concurrent Code Execution (Planner) + Proactive Research (Deep-Dive).
 *   **Synthesis**: Narrative Architect weaving multiple data streams via D-S-I-R logic.
