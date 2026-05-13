@@ -1,7 +1,7 @@
 # ⚡ BRAIN-DS — Leadership Analytics
 
 > Conversational analytics for digital payments data.  
-> Ask questions in plain English. Get executive-grade insights backed by real computation.
+> Ask questions in plain English. Get executive-grade insights backed by real, sandboxed pandas computation — never hallucinated numbers.
 
 Built for **Techfest IIT Bombay 2025-26** — InsightX: Leadership Analytics challenge.
 
