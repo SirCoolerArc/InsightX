@@ -31,19 +31,28 @@ load_dotenv()
 
 _client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 MODEL = "gemini-2.5-flash"
+# Lighter, faster, cheaper model used by Economy Mode for low-risk auxiliary
+# calls (validate_and_refine, audit_deep_dive, generate_followups). The
+# core code generation, narrative, and judge stay on MODEL — Economy Mode
+# does not degrade output quality on the critical path.
+LITE_MODEL = "gemini-2.5-flash-lite"
 
 MAX_RETRIES = 3
 
 
-def _call_gemini(prompt: str, retries: int = 2) -> str:
+def _call_gemini(prompt: str, retries: int = 2, model: str = None) -> str:
     """
     Call Gemini with automatic retry on rate limit (429) errors.
-    Waits 10s then 20s before retrying.
+    Waits 12s then 24s before retrying.
+
+    model: optional model override. Defaults to MODEL (gemini-2.5-flash).
+           Economy Mode passes LITE_MODEL for low-risk auxiliary calls.
     """
+    chosen_model = model or MODEL
     for attempt in range(retries + 1):
         try:
             response = _client.models.generate_content(
-                model=MODEL,
+                model=chosen_model,
                 contents=prompt,
             )
             return response.text
@@ -160,10 +169,31 @@ COMMON PATTERNS:
 # CODE GENERATION
 # ---------------------------------------------------------------------------
 
+# Persona prompts for the Multi-Persona Analysis Lane.
+# Each parallel worker adopts a distinct analytical persona so that the
+# two lanes produce genuinely different angles on the data instead of
+# redundant breakdowns.
+_PERSONAS = {
+    "executive_analyst": (
+        "You are the EXECUTIVE ANALYST persona. Prioritise the single "
+        "headline metric that directly answers the user. Aggregate cleanly, "
+        "avoid speculative segmentation, and prefer compact tabular output."
+    ),
+    "forensic_segmenter": (
+        "You are the FORENSIC SEGMENTER persona. Hunt for hidden segments, "
+        "outliers, and conditional rates that a top-line aggregate would hide. "
+        "Prefer group-by breakdowns across demographics, network, merchant "
+        "category, geography, or time-of-day. Surface the segment with the "
+        "largest deviation from the overall mean."
+    ),
+}
+
+
 def generate_analysis_code(
     user_query: str,
     schema: str,
     conversation_context: str = "",
+    persona: str = "executive_analyst",
 ) -> str:
     """
     Ask Gemini to generate pandas analysis code for the user's query.
@@ -176,6 +206,9 @@ def generate_analysis_code(
         Dataset schema description (from get_schema_prompt).
     conversation_context : str
         Previous conversation turns for follow-up context.
+    persona : str
+        Which analytical persona to adopt for this lane. One of the keys in
+        _PERSONAS. Defaults to "executive_analyst" (the main lane).
 
     Returns
     -------
@@ -191,13 +224,19 @@ CONVERSATION CONTEXT (for follow-up questions):
 If the user's question references previous analysis, use the context above to understand what they are referring to.
 """
 
+    persona_block = _PERSONAS.get(persona, _PERSONAS["executive_analyst"])
+
     prompt = f"""{_SYSTEM_PROMPT}
+
+PERSONA FOR THIS ANALYSIS LANE:
+{persona_block}
 
 {schema}
 {context_block}
 USER'S QUESTION: {user_query}
 
-Write Python code to answer this question. Assign the final answer to `result`.
+Write Python code to answer this question, staying true to your persona.
+Assign the final answer to `result`.
 Return ONLY the Python code, nothing else."""
 
     try:
@@ -271,6 +310,7 @@ def validate_and_refine(
     code: str,
     result_summary: str,
     schema: str,
+    economy: bool = False,
 ) -> dict:
     """
     Ask Gemini whether the code output actually answers the user's question.
@@ -307,7 +347,7 @@ Return ONLY a JSON object (no markdown fences, no explanation):
 }}"""
 
     try:
-        raw_text = _call_gemini(prompt)
+        raw_text = _call_gemini(prompt, model=LITE_MODEL if economy else None)
         raw = _clean_json_response(raw_text)
         verdict = json.loads(raw)
 
@@ -321,10 +361,81 @@ Return ONLY a JSON object (no markdown fences, no explanation):
 
 
 # ---------------------------------------------------------------------------
+# AGENT #4 — RESEARCH AUDITOR (audits Agent #3's deep-dive output)
+# ---------------------------------------------------------------------------
+
+def audit_deep_dive(
+    user_query: str,
+    main_result_summary: str,
+    deep_dive_summary: str,
+    economy: bool = False,
+) -> dict:
+    """
+    Independently audits a deep-dive segmentation/correlation produced by
+    Agent #3 (Insight Hunter) before it is woven into the final narrative.
+
+    Checks three things:
+      1. Statistical meaningfulness — are the spreads/segments large enough
+         to matter, or is the deep-dive surfacing noise?
+      2. Consistency with main result — does the deep-dive contradict or
+         double-count the primary answer?
+      3. Relevance — does the breakdown actually relate to the user query?
+
+    Returns
+    -------
+    dict with keys:
+        valid   : bool   — is the deep-dive safe to surface?
+        reason  : str    — short justification
+        caveat  : str    — caveat to attach if valid-but-noisy (else "")
+    """
+    if not deep_dive_summary or deep_dive_summary.strip() == "No output":
+        return {"valid": False, "reason": "Empty deep-dive output", "caveat": ""}
+
+    prompt = f"""You are the Research Auditor for a multi-agent analytics system.
+A background "Insight Hunter" agent ran an independent segmentation alongside
+the main analysis. Your job is to decide whether its finding is worth
+surfacing to a business user.
+
+USER'S ORIGINAL QUESTION: {user_query}
+
+MAIN ANALYSIS RESULT:
+{main_result_summary}
+
+DEEP-DIVE FINDING (from Insight Hunter):
+{deep_dive_summary}
+
+Audit the deep-dive against three criteria:
+  1. STATISTICAL MEANINGFULNESS — is the spread/effect large enough to matter
+     (>0.5pp for rates, >5% for counts), or is it noise?
+  2. CONSISTENCY — does it contradict or merely repeat the main result?
+  3. RELEVANCE — does the segmentation relate to the user's question?
+
+Return ONLY a JSON object (no markdown, no prose):
+{{
+  "valid": true/false,
+  "reason": "one short sentence",
+  "caveat": "short caveat string if the finding is valid but weak/noisy, else empty string"
+}}"""
+
+    try:
+        raw_text = _call_gemini(prompt, model=LITE_MODEL if economy else None)
+        raw = _clean_json_response(raw_text)
+        verdict = json.loads(raw)
+        return {
+            "valid": bool(verdict.get("valid", False)),
+            "reason": str(verdict.get("reason", ""))[:200],
+            "caveat": str(verdict.get("caveat", ""))[:200],
+        }
+    except Exception:
+        # Conservative fallback: drop the deep-dive rather than risk surfacing noise
+        return {"valid": False, "reason": "Auditor could not verify finding", "caveat": ""}
+
+
+# ---------------------------------------------------------------------------
 # FOLLOW-UP SUGGESTIONS
 # ---------------------------------------------------------------------------
 
-def generate_followups(user_query: str, result_summary: str) -> list[str]:
+def generate_followups(user_query: str, result_summary: str, economy: bool = False) -> list[str]:
     """
     Generate 2-3 natural follow-up question suggestions.
     """
@@ -338,7 +449,7 @@ Return ONLY a JSON array of 3 strings, nothing else. Example:
 ["question 1", "question 2", "question 3"]"""
 
     try:
-        raw_text = _call_gemini(prompt)
+        raw_text = _call_gemini(prompt, model=LITE_MODEL if economy else None)
         raw = _clean_json_response(raw_text)
         followups = json.loads(raw)
         if isinstance(followups, list):

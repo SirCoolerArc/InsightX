@@ -11,3 +11,16 @@ crash_debug*.txt
 test_raw.txt
 test_clean.txt
 test_*.py
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Local working files
+Pipeline_diagram.excalidraw
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo

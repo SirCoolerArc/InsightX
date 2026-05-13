@@ -25,23 +25,33 @@ BRAIN-DS lets business leaders query 250,000 UPI transactions using natural lang
 
 BRAIN-DS is built on a **Code Interpreter** paradigm — the LLM generates code, not answers.
 
+![BRAIN-DS Pipeline](docs/Pipeline.png)
+
 ```
 User Query
   → Next.js UI
   → FastAPI Backend
-  → Parallel Stage 1: Discovery
-      ├─ Agent #1: Code Planner (Deterministic Execution)
-      ├─ Agent #2: Logic Validator
-      ├─ Agent #3: Deep-Dive Researcher (Proactive Segmentation)
-      └─ Agent #4: Research Auditor
+  → Parallel Stage 1: Discovery (Multi-Persona Lane)
+      ├─ Agent #1: Code Planner (Executive Analyst persona)
+      ├─ Agent #2: Logic Validator (semantic alignment check)
+      ├─ Agent #3: Deep-Dive Researcher (Forensic Segmenter persona)
+      └─ Agent #4: Research Auditor (validates deep-dive findings)
   → Parallel Stage 2: Synthesis
       └─ Agent #5: Narrative Architect (D-S-I-R Logic)
   → Parallel Stage 3: Quality Audit
-      ├─ Agent #6: Structural Judge (5-Dimensional Audit)
+      ├─ Agent #6: Structural Judge (5-Dimensional Audit + Audit Loop)
       └─ Agent #7: Contextual Predictor (Strategic Follow-ups)
   → Final Executive Insight (D-S-I-R Narrative + KPI Cards)
   → Next.js UI (Streaming SSE Updates)
 ```
+
+The two parallel discovery lanes use distinct **personas** so they produce
+genuinely complementary angles on the data — the main lane optimises for the
+single headline metric, while the deep-dive lane hunts for hidden segments
+and conditional rates. The Quality Auditor (Agent #6) can trigger an **Audit
+Loop**: if it detects a critical grounding or logical-integrity failure, the
+analysis lanes are re-run with the judge's feedback injected as a corrective
+prompt (capped at 1 retry to bound cost).
 
 All statistics come exclusively from pandas executing in a restricted sandbox — the LLM only writes the code and narrates the results.
 
@@ -113,10 +123,18 @@ pip install -r requirements.txt
 ```
 
 ### 4. Configure Environment
-A `.env` file is already provided in the root directory. To run the application, simply add your **Gemini API Key** to it:
+Copy the provided `.env.example` to `.env` and add your **Gemini API Key**:
+```bash
+# Windows
+copy .env.example .env
+# Mac/Linux
+cp .env.example .env
+```
+Then edit `.env` and replace the placeholder:
 ```
 GEMINI_API_KEY=your_key_here
 ```
+The `.env` file is gitignored — your key will never be committed.
 
 ### 5. Add the dataset
 Place the CSV file at:
@@ -190,6 +208,21 @@ All insights are grounded in verified Python execution within a hardened sandbox
 
 ---
 
+## ⚙️ Performance Modes
+
+Two independent toggles in the UI let users trade off depth, latency, and API cost:
+
+| Toggle | Effect | When to use |
+|---|---|---|
+| ⚡ **Quick Mode** | Skips the deep-dive lane (and therefore the Research Auditor). ~30s saved per query. | Fast follow-ups where headline metric is enough. |
+| 🌿 **Economy Mode** | Routes low-risk auxiliary calls (output validator, deep-dive auditor, follow-up generator) to `gemini-2.5-flash-lite`. Critical-path calls (code generation, narrative, judge) stay on `gemini-2.5-flash`. | High-volume sessions where API cost matters. |
+
+Both toggles persist across page reloads via `localStorage`. All four
+combinations are valid — Quick + Economy together gives the fastest, cheapest
+path; both off gives the full deterministic pipeline.
+
+---
+
 ##  Dataset Insights
 
 | Metric | Value |
@@ -219,6 +252,6 @@ Abhijeet Singh | 24B2468
 
 - **Data privacy:** The dataset is synthetic and does not contain real user data.
 - **Fraud flags:** `fraud_flag = 1` means flagged for automated review, not confirmed fraud.
-- **API costs:** Standard queries involve 3 parallel Gemini 2.5 Flash calls. The judge and follow-up steps add 4 more calls.
+- **API costs:** A standard query makes ~6–8 Gemini calls (code generation, validation, deep-dive segmentation, deep-dive auditor, narrative, judge, follow-ups). Quick Mode drops the deep-dive pair; Economy Mode swaps three of those calls onto `gemini-2.5-flash-lite`. A judge-driven re-analysis adds one more pass when triggered.
 - **Rate limits:** Built-in retry-with-backoff logic handles 429 errors.
 - **Sandbox security:** Generative code runs in a restricted environment with whitelisted builtins — no file I/O, no network, 30s timeout.

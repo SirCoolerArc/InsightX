@@ -26,6 +26,8 @@ app.add_middleware(
 class QueryRequest(BaseModel):
     query: str
     session_id: Optional[str] = "default"
+    quick_mode: Optional[bool] = False
+    economy_mode: Optional[bool] = False
 
 # Simple in-memory storage for session context
 sessions: Dict[str, ConversationManager] = {}
@@ -57,7 +59,12 @@ async def process_query_stream(req: QueryRequest):
             final_result = None
             final_code = ""
 
-            for event_json in run_agent_stream(req.query, conversation_context=context):
+            for event_json in run_agent_stream(
+                req.query,
+                conversation_context=context,
+                quick_mode=bool(req.quick_mode),
+                economy_mode=bool(req.economy_mode),
+            ):
                 yield f"data: {event_json}\n\n"
                 
                 # Try to parse the event to capture final data for history
@@ -103,7 +110,12 @@ def process_query(req: QueryRequest):
     context = cm.get_context()
     
     try:
-        agent_result = run_agent(req.query, conversation_context=context)
+        agent_result = run_agent(
+            req.query,
+            conversation_context=context,
+            quick_mode=bool(req.quick_mode),
+            economy_mode=bool(req.economy_mode),
+        )
         
         # Add to conversation history
         response = agent_result["response"]

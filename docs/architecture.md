@@ -78,17 +78,20 @@ Unlike standard LLM chatbots, BRAIN-DS utilizes a **Code-Interpreter Paradigm** 
 ## 3. The 7-Agent Parallel Orchestrator
 The core of BRAIN-DS is its multi-agent pipeline, which collapses a sequential reasoning process into three parallel stages to optimize both depth and speed.
 
-### Stage 1: Parallel Discovery (Concurrency: 2)
-*   **Agent #1: Primary Code Planner**: Generates deterministic Python/Pandas logic using dynamically injected schema metadata and P90 EDA benchmarks.
-*   **Agent #2: Logic Validator**: Independently audits the Planner’s output to ensure semantic alignment with the user's intent before execution.
-*   **Agent #3: Deep-Dive Researcher**: A context-aware agent that scans for anomalies or categorical correlations (e.g., State-wise or Network-wise disparities) in parallel with the main query.
-*   **Agent #4: Research Auditor**: Validates the technical integrity of the Deep-Dive findings.
+### Stage 1: Parallel Discovery — Multi-Persona Lane (Concurrency: 2)
+The two parallel lanes adopt distinct **analytical personas** so they produce
+genuinely complementary angles on the data, not redundant breakdowns.
+
+*   **Agent #1: Primary Code Planner** (`executive_analyst` persona): Generates deterministic Python/Pandas logic using dynamically injected schema metadata and P90 EDA benchmarks. Optimises for the single headline metric that directly answers the user.
+*   **Agent #2: Logic Validator**: Independently audits the Planner's output (post-execution result vs. user intent) to ensure semantic alignment. If misaligned, generates corrected code that re-enters the execution loop.
+*   **Agent #3: Deep-Dive Researcher** (`forensic_segmenter` persona): A context-aware agent that hunts for hidden segments, outliers, and conditional rates in parallel with the main query. Surfaces the segment with the largest deviation from the overall mean.
+*   **Agent #4: Research Auditor**: Audits the Deep-Dive finding against three criteria — statistical meaningfulness (>0.5pp for rates), consistency with the main result, and relevance to the user's question. Trivial outputs (under ~80 chars) skip the auditor entirely. Invalid findings are dropped before they reach the narrator; weak-but-valid ones are surfaced with an auditor caveat.
 
 ### Stage 2: Narrative Synthesis
 *   **Agent #5: Narrative Architect**: Synthesizes the raw data from all discovery workers into a structured D-S-I-R (Direct, Support, Interpret, Recommend) response.
 
-### Stage 3: Quality Audit (Concurrency: 2)
-*   **Agent #6: Structural Judge**: A 5-Dimensional Auditor that enforces strict rules for Grounding (no uncomputed numbers), Calibration (adjective thresholds for 0.5pp/2pp deltas), and Logic Integrity.
+### Stage 3: Quality Audit (Concurrency: 2) + Audit Loop
+*   **Agent #6: Structural Judge**: A 5-Dimensional Auditor that enforces strict rules for Grounding (no uncomputed numbers), Calibration (adjective thresholds for 0.5pp/2pp deltas), and Logic Integrity. Calibration/safety/relevance issues are corrected in-place via `final_response`. **Critical grounding or logical-integrity failures** trigger the **Audit Loop**: the analysis lanes are re-run with the judge's issues injected as a corrective prompt (capped at 1 retry to bound cost).
 *   **Agent #7: Contextual Predictor**: Anticipates the next three strategic follow-up questions to minimize user friction.
 
 ---
@@ -117,6 +120,21 @@ To ensure reliability and security, all generated code is executed within a **Ze
     *   Delta < 0.5pp → "Marginal"
     *   Delta 0.5 - 2pp → "Notable"
     *   Delta > 2pp → "Significant"
+
+---
+
+## 5b. Performance Modes
+Two independent UI toggles let users trade off depth, latency, and API cost.
+Both flags are forwarded from the frontend through `POST /api/query_stream`
+into `run_agent_stream`, and persist across reloads via `localStorage`.
+
+| Mode | Pipeline effect | Calls saved | Quality impact |
+|---|---|---|---|
+| **Quick Mode** (`quick_mode: true`) | Prunes the `deep_dive_1` task from the parallel lane list. Agent #3 and Agent #4 are skipped entirely; the narrator receives `deep_dive_results=[]`. | ~1–3 LLM calls (worker chain + auditor) | No forensic-segmentation insight in the narrative; headline metric unchanged. |
+| **Economy Mode** (`economy_mode: true`) | Routes Agent #2 (Logic Validator), Agent #4 (Research Auditor), and Agent #7 (Follow-up Generator) onto `gemini-2.5-flash-lite`. Critical-path calls (Agent #1 code generation, Agent #5 narrative, Agent #6 judge) stay on `gemini-2.5-flash`. | ~30–40% latency on three auxiliary calls; lower per-token cost. | Negligible — these calls are simple JSON classification tasks that flash-lite handles reliably. |
+
+All four combinations are valid and independent. The default state (both off)
+is the full deterministic pipeline.
 
 ---
 

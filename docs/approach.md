@@ -102,6 +102,15 @@ If code execution fails, the agent runs a retry loop:
 
 Additionally, if code succeeds but `validate_and_refine()` determines the output doesn't answer the question, the LLM generates corrected code and re-executes.
 
+### 2.5 Judge-Driven Audit Loop (Outer Self-Healing)
+
+Beyond the inner execution loop above, the system has an outer loop driven by the Quality Auditor (Agent #6). After the narrative is generated and judged:
+
+- **Calibration / safety / relevance issues** → judge corrects the narrative text in-place via `final_response` (no re-analysis needed).
+- **Critical grounding or logical-integrity issues** → the entire analysis is re-run with the judge's issues injected as a corrective prompt at the front of the user query. Capped at `JUDGE_RETRY_BUDGET = 1` extra pass to bound API cost.
+
+The retry trigger is gated by dimension: only `grounding` and `logical_integrity` warrant a full re-run, since other dimensions are already patched in-place.
+
 ---
 
 ## 3. Insight Generation Logic
@@ -160,17 +169,33 @@ To ensure that generated insights are not just accurate but actionable for busin
 *   **INTERPRETATION**: Scientific calibration of the numbers using established EDA baselines.
 *   **RECOMMENDATION**: Actionable next steps for operations, risk, or marketing teams.
 
-## 2. Proactive Research Logic
-BRAIN-DS doesn't just wait for questions; it investigates. Every query triggers a parallel **Deep-Dive Worker** that:
-*   Identify Contextual Segments (e.g., if the user asks about Banks, the Deep-Dive checks States).
+## 2. Proactive Research Logic (Multi-Persona Lane)
+BRAIN-DS doesn't just wait for questions; it investigates. The two parallel discovery lanes adopt distinct **analytical personas** — the main lane uses an `executive_analyst` persona that prioritises the headline metric, while a parallel **Deep-Dive Worker** runs as a `forensic_segmenter`. The deep-dive worker:
+*   Identifies Contextual Segments (e.g., if the user asks about Banks, the Deep-Dive checks States).
 *   Scans for Segment-level Anomalies (e.g., "Merchant Category 'Food' shows an 8% higher failure rate than average").
-*   Weaves these findings into the main narrative to provide "Bonus Intelligence."
+*   Surfaces the segment with the largest deviation from the overall mean.
+
+### Research Auditor (Agent #4)
+Before any deep-dive finding reaches the narrator, it passes through the Research Auditor — an independent Gemini call that checks:
+1. **Statistical meaningfulness** — is the spread/effect large enough to matter (>0.5pp for rates), or is it noise?
+2. **Consistency** — does it contradict or merely repeat the main result?
+3. **Relevance** — does the segmentation relate to the user's question?
+
+Trivial deep-dive outputs (under ~80 chars) skip the auditor entirely as a latency optimisation. Invalid findings are dropped silently; weak-but-valid ones are surfaced with an inline auditor caveat. This prevents the system from weaving statistical noise into the narrative as "Bonus Intelligence."
 
 ## 3. High-Depth Grounding
 *   **Calculated Memory**: The system Maintains a 3-turn context of both *Code* and *Results*, allowing the agent to perform complex longitudinal analysis (e.g., "Now compare that to the previous state").
 *   **Adjective Constraints**: The Narrative Architect is bound by a strict whitelist of adjectives mapped to specific data spreads (pp deltas), preventing linguistic hallucination.
 
-## 4. Security & Safety First
+## 4. Performance Modes (User-Controllable)
+Two independent UI toggles let the user trade off depth, latency, and API cost without restarting the system:
+
+*   **Quick Mode**: Skips the deep-dive lane entirely (Agent #3 + Agent #4). Saves ~30s per query at the cost of forensic segmentation in the narrative. Useful for rapid follow-ups when the headline metric is enough.
+*   **Economy Mode**: Routes the three low-risk auxiliary calls (Logic Validator, Research Auditor, Follow-up Generator) onto `gemini-2.5-flash-lite`. Critical-path calls (code generation, narrative, judge) stay on `gemini-2.5-flash`, so output quality on the answer itself is unchanged.
+
+Both flags persist across page reloads via `localStorage` and are independent — all four combinations are valid.
+
+## 5. Security & Safety First
 *   **Zero-Trust Sandbox**: Total isolation of the execution environment.
 *   **Anti-Sycophancy Filter**: An audit layer that prevents the AI from blindly agreeing with user-provided premises.
 *   **PII & Fraud Guardrail**: Fraud-flagged transactions are treated as "For Review," and the system is strictly prohibited from "Confirming" fraud without human oversight.

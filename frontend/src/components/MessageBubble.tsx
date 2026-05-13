@@ -14,8 +14,6 @@ export default function MessageBubble({ message }: { message: Message }) {
     const [showCode, setShowCode] = React.useState(false);
     const [showSteps, setShowSteps] = React.useState(false);
 
-    console.log("Verdict Debug:", message.id, message.verdict);
-
     return (
         <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -149,6 +147,7 @@ export default function MessageBubble({ message }: { message: Message }) {
                                 <AnimatePresence>
                                     {showCode && message.code && (
                                         <motion.div
+                                            key="code-panel"
                                             initial={{ opacity: 0, height: 0 }}
                                             animate={{ opacity: 1, height: 'auto' }}
                                             exit={{ opacity: 0, height: 0 }}
@@ -161,6 +160,7 @@ export default function MessageBubble({ message }: { message: Message }) {
                                     )}
                                     {showSteps && message.steps && message.steps.length > 0 && (
                                         <motion.div
+                                            key="steps-panel"
                                             initial={{ opacity: 0, height: 0 }}
                                             animate={{ opacity: 1, height: 'auto' }}
                                             exit={{ opacity: 0, height: 0 }}

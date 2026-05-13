@@ -1,16 +1,47 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, Zap, Leaf } from 'lucide-react';
 import { Message } from '@/types';
 import MessageBubble from './MessageBubble';
 import WelcomeScreen from './WelcomeScreen';
+
+const QUICK_MODE_KEY = 'insightx.quickMode';
+const ECONOMY_MODE_KEY = 'insightx.economyMode';
 
 export default function ChatInterface() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [quickMode, setQuickMode] = useState(false);
+    const [economyMode, setEconomyMode] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
+
+    // Hydrate toggle state from localStorage on mount.
+    useEffect(() => {
+        try {
+            setQuickMode(localStorage.getItem(QUICK_MODE_KEY) === 'true');
+            setEconomyMode(localStorage.getItem(ECONOMY_MODE_KEY) === 'true');
+        } catch {
+            // localStorage unavailable (SSR / privacy mode) — defaults stand.
+        }
+    }, []);
+
+    const toggleQuickMode = () => {
+        setQuickMode(prev => {
+            const next = !prev;
+            try { localStorage.setItem(QUICK_MODE_KEY, String(next)); } catch {}
+            return next;
+        });
+    };
+
+    const toggleEconomyMode = () => {
+        setEconomyMode(prev => {
+            const next = !prev;
+            try { localStorage.setItem(ECONOMY_MODE_KEY, String(next)); } catch {}
+            return next;
+        });
+    };
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -49,7 +80,9 @@ export default function ChatInterface() {
                 },
                 body: JSON.stringify({
                     query: query.trim(),
-                    session_id: 'default-session'
+                    session_id: 'default-session',
+                    quick_mode: quickMode,
+                    economy_mode: economyMode,
                 }),
             });
 
@@ -202,6 +235,36 @@ export default function ChatInterface() {
                     onSubmit={handleSubmit}
                     className="max-w-4xl mx-auto relative group"
                 >
+                    <div className="relative z-10 flex items-center gap-2 mb-2 ml-1">
+                        <button
+                            type="button"
+                            onClick={toggleQuickMode}
+                            aria-pressed={quickMode}
+                            title="Skip the deep-dive lane for a faster answer (~30s saved)"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                                quickMode
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                            }`}
+                        >
+                            <Zap className="w-3.5 h-3.5" />
+                            Quick Mode{quickMode ? ' · on' : ''}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={toggleEconomyMode}
+                            aria-pressed={economyMode}
+                            title="Use a lighter model (gemini-2.5-flash-lite) for low-risk auxiliary calls"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                                economyMode
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                            }`}
+                        >
+                            <Leaf className="w-3.5 h-3.5" />
+                            Economy Mode{economyMode ? ' · on' : ''}
+                        </button>
+                    </div>
                     <div className="absolute inset-0 bg-indigo-500/10 rounded-[28px] blur-xl group-hover:bg-indigo-500/15 transition-colors duration-500" />
                     <div className="relative flex items-end w-full bg-white rounded-3xl border border-slate-200 shadow-sm focus-within:border-indigo-400 focus-within:ring-[3px] focus-within:ring-indigo-100 transition-all overflow-hidden pl-5 pr-2 py-2 text-base">
                         <textarea
