@@ -214,12 +214,15 @@ Two independent toggles in the UI let users trade off depth, latency, and API co
 
 | Toggle | Effect | When to use |
 |---|---|---|
-| ⚡ **Quick Mode** | Skips the deep-dive lane (and therefore the Research Auditor). ~30s saved per query. | Fast follow-ups where headline metric is enough. |
+| ⚡ **Quick Mode** | Skips the deep-dive lane (and therefore the Research Auditor). ~30s saved per query. | Fast follow-ups where the headline metric is enough. |
 | 🌿 **Economy Mode** | Routes low-risk auxiliary calls (output validator, deep-dive auditor, follow-up generator) to `gemini-2.5-flash-lite`. Critical-path calls (code generation, narrative, judge) stay on `gemini-2.5-flash`. | High-volume sessions where API cost matters. |
+| 🛡️ **Deep Verify Mode** | Forces semantic output validation on every result and enables the Quality Auditor's **Audit Loop** with up to **2 retries** for critical grounding or logical-integrity issues. | High-stakes queries where accuracy matters more than latency. |
 
-Both toggles persist across page reloads via `localStorage`. All four
-combinations are valid — Quick + Economy together gives the fastest, cheapest
-path; both off gives the full deterministic pipeline.
+All three toggles persist across page reloads via `localStorage` and are
+independent — eight combinations are valid. Default (all off) is tuned for
+latency; flip on what you need. By default the Audit Loop is **off** and the
+output validator runs only when heuristics flag the result as suspect — this
+keeps happy-path queries snappy without weakening the architecture.
 
 ---
 

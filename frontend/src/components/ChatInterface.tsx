@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Zap, Leaf } from 'lucide-react';
+import { Send, Loader2, Zap, Leaf, ShieldCheck } from 'lucide-react';
 import { Message } from '@/types';
 import MessageBubble from './MessageBubble';
 import WelcomeScreen from './WelcomeScreen';
 
 const QUICK_MODE_KEY = 'insightx.quickMode';
 const ECONOMY_MODE_KEY = 'insightx.economyMode';
+const DEEP_VERIFY_MODE_KEY = 'insightx.deepVerifyMode';
 
 export default function ChatInterface() {
     const [messages, setMessages] = useState<Message[]>([]);
@@ -15,6 +16,7 @@ export default function ChatInterface() {
     const [isLoading, setIsLoading] = useState(false);
     const [quickMode, setQuickMode] = useState(false);
     const [economyMode, setEconomyMode] = useState(false);
+    const [deepVerifyMode, setDeepVerifyMode] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
 
     // Hydrate toggle state from localStorage on mount.
@@ -22,6 +24,7 @@ export default function ChatInterface() {
         try {
             setQuickMode(localStorage.getItem(QUICK_MODE_KEY) === 'true');
             setEconomyMode(localStorage.getItem(ECONOMY_MODE_KEY) === 'true');
+            setDeepVerifyMode(localStorage.getItem(DEEP_VERIFY_MODE_KEY) === 'true');
         } catch {
             // localStorage unavailable (SSR / privacy mode) — defaults stand.
         }
@@ -39,6 +42,14 @@ export default function ChatInterface() {
         setEconomyMode(prev => {
             const next = !prev;
             try { localStorage.setItem(ECONOMY_MODE_KEY, String(next)); } catch {}
+            return next;
+        });
+    };
+
+    const toggleDeepVerifyMode = () => {
+        setDeepVerifyMode(prev => {
+            const next = !prev;
+            try { localStorage.setItem(DEEP_VERIFY_MODE_KEY, String(next)); } catch {}
             return next;
         });
     };
@@ -83,6 +94,7 @@ export default function ChatInterface() {
                     session_id: 'default-session',
                     quick_mode: quickMode,
                     economy_mode: economyMode,
+                    deep_verify_mode: deepVerifyMode,
                 }),
             });
 
@@ -263,6 +275,20 @@ export default function ChatInterface() {
                         >
                             <Leaf className="w-3.5 h-3.5" />
                             Economy Mode{economyMode ? ' · on' : ''}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={toggleDeepVerifyMode}
+                            aria-pressed={deepVerifyMode}
+                            title="Force semantic output validation and let the Quality Auditor re-run the analysis up to 2 times if it finds critical grounding or logic issues. Slower but higher-confidence."
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                                deepVerifyMode
+                                    ? 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100'
+                                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                            }`}
+                        >
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            Deep Verify Mode{deepVerifyMode ? ' · on' : ''}
                         </button>
                     </div>
                     <div className="absolute inset-0 bg-indigo-500/10 rounded-[28px] blur-xl group-hover:bg-indigo-500/15 transition-colors duration-500" />

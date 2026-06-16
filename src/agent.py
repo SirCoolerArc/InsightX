@@ -58,9 +58,14 @@ except ModuleNotFoundError:
 # Maximum number of judge-driven re-analyses. The judge runs once on the
 # first narrative; if it returns approved=False with a critical issue we
 # cannot patch in-place (see _judge_warrants_retry), we regenerate code
-# with the judge's issues injected and re-run the pipeline. Capped to bound
-# API cost.
-JUDGE_RETRY_BUDGET = 1
+# with the judge's issues injected and re-run the pipeline.
+#
+# Default is 0: the audit loop is OFF unless the user opts into Deep Verify
+# Mode. This avoids the ~50% latency hit on queries the judge would have
+# (often spuriously) flagged. When Deep Verify is on, the budget bumps to
+# DEEP_VERIFY_RETRY_BUDGET for stronger guarantees.
+JUDGE_RETRY_BUDGET = 0
+DEEP_VERIFY_RETRY_BUDGET = 2
 
 # Only these dimensions warrant a full re-analysis. Calibration, safety, and
 # relevance issues are already corrected in-place by the judge's
@@ -69,6 +74,44 @@ JUDGE_RETRY_BUDGET = 1
 # statistics) and logical_integrity (wrong premise / wrong question answered)
 # require new code, so they go through the retry loop.
 _RETRY_WORTHY_DIMENSIONS = {"grounding", "logical_integrity"}
+
+
+_BREAKDOWN_KEYWORDS = {
+    "compare", "vs", "versus", "breakdown", "break down", "by ",
+    "across", "per ", "between", "each", "every", "trend", "distribution",
+    "top ", "bottom ", "highest", "lowest", "rank", "ranked",
+    "hourly", "daily", "weekly", "monthly", "yearly",
+    "group", "segment", "category", "categories",
+}
+
+
+def _validation_likely_needed(user_query: str, result_summary: str) -> bool:
+    """Cheap heuristic — decide whether validate_and_refine should run.
+
+    Returns True only when the result looks suspect relative to the question:
+      - empty / 'No output' result
+      - user asked for a breakdown/comparison but got a single scalar
+      - result is unusually short
+    Otherwise validation is skipped (saves ~10s per query on the happy path).
+    The semantic validator still runs whenever any of these heuristics fire.
+    """
+    if not result_summary or result_summary.strip() in ("", "No output", "None"):
+        return True
+
+    summary = result_summary.strip()
+    query_lower = user_query.lower()
+    asked_for_breakdown = any(kw in query_lower for kw in _BREAKDOWN_KEYWORDS)
+
+    # Single scalar / single line when the user wanted a breakdown
+    line_count = summary.count("\n") + 1
+    if asked_for_breakdown and len(summary) < 120 and line_count <= 2:
+        return True
+
+    # Very short result — worth a sanity check regardless
+    if len(summary) < 30:
+        return True
+
+    return False
 
 
 def _judge_warrants_retry(verdict: dict) -> bool:
@@ -111,7 +154,7 @@ def run_agent(user_query: str, conversation_context: dict = None) -> dict:
         code      : str   — final executed code
     """
 
-def _run_analysis_worker(task_id: str, is_main: bool, user_query: str, schema: str, conv_context_str: str, df, result_queue: queue.Queue, persona: str = "executive_analyst", judge_feedback: str = "", economy: bool = False):
+def _run_analysis_worker(task_id: str, is_main: bool, user_query: str, schema: str, conv_context_str: str, df, result_queue: queue.Queue, persona: str = "executive_analyst", judge_feedback: str = "", economy: bool = False, force_validate: bool = False):
     """
     Runs the generate -> execute -> fix loop for a single task.
     Puts status updates and final result into result_queue.
@@ -179,21 +222,26 @@ def _run_analysis_worker(task_id: str, is_main: bool, user_query: str, schema: s
             steps.append(step)
 
             if attempt == 1 and last_result is not None:
-                if is_main: _enqueue_event("status", {"message": "Validating output...", "step": "validate"})
-                try:
-                    validation = validate_and_refine(effective_query, code, last_result_summary, schema, economy=economy)
-                    if not validation.get("aligned") and validation.get("new_code"):
-                        if is_main: _enqueue_event("status", {"message": "Output needed refinement. Regenerating...", "step": "refining"})
-                        steps.append({
-                            "iteration": attempt,
-                            "phase": "refinement",
-                            "reason": validation.get("reason", "Output misaligned"),
-                            "code": validation["new_code"],
-                        })
-                        code = validation["new_code"]
-                        continue
-                except Exception:
-                    pass
+                # Smart-gate: skip the validator LLM call on the happy path
+                # (saves ~10s/query). Always runs in Deep Verify Mode
+                # (force_validate=True) or when heuristics flag a suspect result.
+                should_validate = force_validate or _validation_likely_needed(effective_query, last_result_summary)
+                if should_validate:
+                    if is_main: _enqueue_event("status", {"message": "Validating output...", "step": "validate"})
+                    try:
+                        validation = validate_and_refine(effective_query, code, last_result_summary, schema, economy=economy)
+                        if not validation.get("aligned") and validation.get("new_code"):
+                            if is_main: _enqueue_event("status", {"message": "Output needed refinement. Regenerating...", "step": "refining"})
+                            steps.append({
+                                "iteration": attempt,
+                                "phase": "refinement",
+                                "reason": validation.get("reason", "Output misaligned"),
+                                "code": validation["new_code"],
+                            })
+                            code = validation["new_code"]
+                            continue
+                    except Exception:
+                        pass
             break
         else:
             step["phase"] = "error"
@@ -228,6 +276,7 @@ def run_agent_stream(
     conversation_context: dict = None,
     quick_mode: bool = False,
     economy_mode: bool = False,
+    deep_verify_mode: bool = False,
 ):
     """
     Generator version of run_agent that yields progress updates
@@ -239,7 +288,12 @@ def run_agent_stream(
     economy_mode: if True, routes the low-risk auxiliary calls (validate,
         audit, followups) to gemini-2.5-flash-lite. Critical-path calls
         (code generation, narrative, judge) stay on gemini-2.5-flash.
+    deep_verify_mode: if True, enables the judge-driven audit loop with
+        DEEP_VERIFY_RETRY_BUDGET retries. The judge can re-trigger code
+        generation when it finds critical grounding or logical-integrity
+        issues. Off by default to keep latency tight on the happy path.
     """
+    retry_budget = DEEP_VERIFY_RETRY_BUDGET if deep_verify_mode else JUDGE_RETRY_BUDGET
     import json
     def _yield_event(event_type: str, data: dict):
         return json.dumps({"type": event_type, "data": data})
@@ -281,7 +335,7 @@ def run_agent_stream(
                 executor.submit(
                     _run_analysis_worker,
                     t["id"], t["is_main"], t["query"], schema, conv_context_str, df, q,
-                    t["persona"], judge_feedback, economy_mode,
+                    t["persona"], judge_feedback, economy_mode, deep_verify_mode,
                 ): t["id"]
                 for t in tasks
             }
@@ -435,11 +489,11 @@ def run_agent_stream(
         verdict = future_judge.result()
 
     retries_used = 0
-    while retries_used < JUDGE_RETRY_BUDGET and _judge_warrants_retry(verdict):
+    while retries_used < retry_budget and _judge_warrants_retry(verdict):
         retries_used += 1
         feedback = _format_judge_feedback(verdict)
         yield _yield_event("status", {
-            "message": f"Quality Auditor flagged a critical issue. Re-running analysis (retry {retries_used}/{JUDGE_RETRY_BUDGET})...",
+            "message": f"Quality Auditor flagged a critical issue. Re-running analysis (retry {retries_used}/{retry_budget})...",
             "step": "judge_retry",
         })
         for kind, payload in _run_lanes(judge_feedback=feedback):
@@ -501,6 +555,7 @@ def run_agent(
     conversation_context: dict = None,
     quick_mode: bool = False,
     economy_mode: bool = False,
+    deep_verify_mode: bool = False,
 ) -> dict:
     """Main entry point for the code interpreter agent.
 
@@ -508,8 +563,11 @@ def run_agent(
     single-lane path never runs a deep-dive in the first place.
     economy_mode routes auxiliary calls (validate, followups) through
     gemini-2.5-flash-lite.
+    deep_verify_mode enables the judge-driven audit loop with
+    DEEP_VERIFY_RETRY_BUDGET retries (off by default).
     """
     del quick_mode  # accepted for API parity, no effect in single-lane path
+    retry_budget = DEEP_VERIFY_RETRY_BUDGET if deep_verify_mode else JUDGE_RETRY_BUDGET
     # Load the DataFrame and schema
     df = get_dataframe()
     schema = get_schema_prompt(df)
@@ -590,21 +648,23 @@ def run_agent(
                 steps.append(step)
 
                 if attempt == 1 and last_result is not None:
-                    try:
-                        validation = validate_and_refine(
-                            _build_effective_query(), code, last_result_summary, schema, economy=economy_mode
-                        )
-                        if not validation.get("aligned") and validation.get("new_code"):
-                            steps.append({
-                                "iteration": attempt,
-                                "phase": "refinement",
-                                "reason": validation.get("reason", "Output misaligned"),
-                                "code": validation["new_code"],
-                            })
-                            code = validation["new_code"]
-                            continue
-                    except Exception:
-                        pass
+                    should_validate = deep_verify_mode or _validation_likely_needed(_build_effective_query(), last_result_summary)
+                    if should_validate:
+                        try:
+                            validation = validate_and_refine(
+                                _build_effective_query(), code, last_result_summary, schema, economy=economy_mode
+                            )
+                            if not validation.get("aligned") and validation.get("new_code"):
+                                steps.append({
+                                    "iteration": attempt,
+                                    "phase": "refinement",
+                                    "reason": validation.get("reason", "Output misaligned"),
+                                    "code": validation["new_code"],
+                                })
+                                code = validation["new_code"]
+                                continue
+                        except Exception:
+                            pass
                 break
             else:
                 step["phase"] = "error"
@@ -662,7 +722,7 @@ def run_agent(
             verdict = f_jud.result()
 
         # ---- Judge-driven retry decision ----
-        if judge_retries_used < JUDGE_RETRY_BUDGET and _judge_warrants_retry(verdict):
+        if judge_retries_used < retry_budget and _judge_warrants_retry(verdict):
             judge_retries_used += 1
             judge_feedback = _format_judge_feedback(verdict)
             try:

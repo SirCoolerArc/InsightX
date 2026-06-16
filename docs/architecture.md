@@ -90,8 +90,8 @@ genuinely complementary angles on the data, not redundant breakdowns.
 ### Stage 2: Narrative Synthesis
 *   **Agent #5: Narrative Architect**: Synthesizes the raw data from all discovery workers into a structured D-S-I-R (Direct, Support, Interpret, Recommend) response.
 
-### Stage 3: Quality Audit (Concurrency: 2) + Audit Loop
-*   **Agent #6: Structural Judge**: A 5-Dimensional Auditor that enforces strict rules for Grounding (no uncomputed numbers), Calibration (adjective thresholds for 0.5pp/2pp deltas), and Logic Integrity. Calibration/safety/relevance issues are corrected in-place via `final_response`. **Critical grounding or logical-integrity failures** trigger the **Audit Loop**: the analysis lanes are re-run with the judge's issues injected as a corrective prompt (capped at 1 retry to bound cost).
+### Stage 3: Quality Audit (Concurrency: 2) + Optional Audit Loop
+*   **Agent #6: Structural Judge**: A 5-Dimensional Auditor that enforces strict rules for Grounding (no uncomputed numbers), Calibration (adjective thresholds for 0.5pp/2pp deltas), and Logic Integrity. Calibration/safety/relevance issues are always corrected in-place via `final_response`. When **Deep Verify Mode** is enabled, **critical grounding or logical-integrity failures** additionally trigger the **Audit Loop**: the analysis lanes are re-run with the judge's issues injected as a corrective prompt (capped at `DEEP_VERIFY_RETRY_BUDGET = 2` retries). By default the loop is off — the judge still runs and still patches in-place, but does not trigger re-analysis. This keeps happy-path latency tight while preserving the audit-loop capability for high-stakes queries.
 *   **Agent #7: Contextual Predictor**: Anticipates the next three strategic follow-up questions to minimize user friction.
 
 ---
@@ -128,13 +128,25 @@ Two independent UI toggles let users trade off depth, latency, and API cost.
 Both flags are forwarded from the frontend through `POST /api/query_stream`
 into `run_agent_stream`, and persist across reloads via `localStorage`.
 
-| Mode | Pipeline effect | Calls saved | Quality impact |
+| Mode | Pipeline effect | Calls saved/added | Quality impact |
 |---|---|---|---|
-| **Quick Mode** (`quick_mode: true`) | Prunes the `deep_dive_1` task from the parallel lane list. Agent #3 and Agent #4 are skipped entirely; the narrator receives `deep_dive_results=[]`. | ~1–3 LLM calls (worker chain + auditor) | No forensic-segmentation insight in the narrative; headline metric unchanged. |
+| **Quick Mode** (`quick_mode: true`) | Prunes the `deep_dive_1` task from the parallel lane list. Agent #3 and Agent #4 are skipped entirely; the narrator receives `deep_dive_results=[]`. | Saves ~1–3 LLM calls (worker chain + auditor) | No forensic-segmentation insight in the narrative; headline metric unchanged. |
 | **Economy Mode** (`economy_mode: true`) | Routes Agent #2 (Logic Validator), Agent #4 (Research Auditor), and Agent #7 (Follow-up Generator) onto `gemini-2.5-flash-lite`. Critical-path calls (Agent #1 code generation, Agent #5 narrative, Agent #6 judge) stay on `gemini-2.5-flash`. | ~30–40% latency on three auxiliary calls; lower per-token cost. | Negligible — these calls are simple JSON classification tasks that flash-lite handles reliably. |
+| **Deep Verify Mode** (`deep_verify_mode: true`) | Forces Agent #2 to run on every result (overriding the cheap heuristic gate), and raises the judge audit-loop budget from 0 to `DEEP_VERIFY_RETRY_BUDGET = 2`. Critical grounding or logical-integrity failures will retrigger the analysis. | Adds 1 validator call + up to 2 full re-analyses if the judge fires. | Higher-confidence answers; significantly higher latency on the few queries that trigger retries. |
 
-All four combinations are valid and independent. The default state (both off)
-is the full deterministic pipeline.
+All eight combinations are valid and independent. The default state (all
+off) skips the validator on happy-path queries (gated by a cheap heuristic
+checking for empty/scalar/short results) and disables the audit loop — this
+trades the safety net for latency on the common case, while keeping every
+mechanism one toggle away.
+
+### Smart-Gated Output Validation
+By default, Agent #2 (Logic Validator) only fires when the cheap heuristic
+`_validation_likely_needed()` flags the result as suspect: empty/`None`
+result, scalar output when the user asked for a breakdown, or unusually
+short summary (<30 chars). On a clean structured result that already looks
+complete, the validator is skipped (saves ~10s per query). Deep Verify Mode
+overrides this and always runs the validator.
 
 ---
 

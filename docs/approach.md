@@ -102,14 +102,24 @@ If code execution fails, the agent runs a retry loop:
 
 Additionally, if code succeeds but `validate_and_refine()` determines the output doesn't answer the question, the LLM generates corrected code and re-executes.
 
-### 2.5 Judge-Driven Audit Loop (Outer Self-Healing)
+### 2.5 Judge-Driven Audit Loop (Outer Self-Healing, User-Gated)
 
 Beyond the inner execution loop above, the system has an outer loop driven by the Quality Auditor (Agent #6). After the narrative is generated and judged:
 
-- **Calibration / safety / relevance issues** → judge corrects the narrative text in-place via `final_response` (no re-analysis needed).
-- **Critical grounding or logical-integrity issues** → the entire analysis is re-run with the judge's issues injected as a corrective prompt at the front of the user query. Capped at `JUDGE_RETRY_BUDGET = 1` extra pass to bound API cost.
+- **Calibration / safety / relevance issues** → judge always corrects the narrative text in-place via `final_response` (no re-analysis needed).
+- **Critical grounding or logical-integrity issues** → in **Deep Verify Mode**, the entire analysis is re-run with the judge's issues injected as a corrective prompt at the front of the user query, capped at `DEEP_VERIFY_RETRY_BUDGET = 2` extra passes. With Deep Verify off (the default), the judge's verdict is recorded and shown to the user but does not trigger re-analysis — this keeps latency tight on the common case.
 
-The retry trigger is gated by dimension: only `grounding` and `logical_integrity` warrant a full re-run, since other dimensions are already patched in-place.
+The retry trigger is gated by dimension: only `grounding` and `logical_integrity` warrant a full re-run, since other dimensions are already patched in-place. The default-off behaviour reflects the empirical observation that on a clean structured dataset, judge-triggered retries frequently rework already-correct answers; making the loop user-controllable preserves the capability for high-stakes queries without paying the latency cost on every query.
+
+### 2.6 Smart-Gated Output Validation
+
+Agent #2 (Logic Validator) — which asks the LLM whether the executed output actually answers the user's question — is gated by a cheap heuristic on the default path. It fires only when the result looks suspect:
+
+- empty / `None` result
+- scalar output when the user query implies a breakdown (`compare`, `by …`, `trend`, `top`, `each`, etc.)
+- unusually short result summary (< 30 chars)
+
+On well-formed structured results, the validator is skipped (saves ~10s per query). Deep Verify Mode overrides this gate and forces validation on every result, regardless of heuristic.
 
 ---
 
@@ -188,12 +198,13 @@ Trivial deep-dive outputs (under ~80 chars) skip the auditor entirely as a laten
 *   **Adjective Constraints**: The Narrative Architect is bound by a strict whitelist of adjectives mapped to specific data spreads (pp deltas), preventing linguistic hallucination.
 
 ## 4. Performance Modes (User-Controllable)
-Two independent UI toggles let the user trade off depth, latency, and API cost without restarting the system:
+Three independent UI toggles let the user trade off depth, latency, API cost, and confidence without restarting the system:
 
 *   **Quick Mode**: Skips the deep-dive lane entirely (Agent #3 + Agent #4). Saves ~30s per query at the cost of forensic segmentation in the narrative. Useful for rapid follow-ups when the headline metric is enough.
 *   **Economy Mode**: Routes the three low-risk auxiliary calls (Logic Validator, Research Auditor, Follow-up Generator) onto `gemini-2.5-flash-lite`. Critical-path calls (code generation, narrative, judge) stay on `gemini-2.5-flash`, so output quality on the answer itself is unchanged.
+*   **Deep Verify Mode**: Forces the Logic Validator to run on every result (bypassing the smart-gate heuristic) and enables the judge-driven Audit Loop with up to 2 retries for critical grounding or logical-integrity failures. Higher latency, higher confidence — appropriate for high-stakes queries.
 
-Both flags persist across page reloads via `localStorage` and are independent — all four combinations are valid.
+All three flags persist across page reloads via `localStorage` and are independent — eight combinations are valid.
 
 ## 5. Security & Safety First
 *   **Zero-Trust Sandbox**: Total isolation of the execution environment.

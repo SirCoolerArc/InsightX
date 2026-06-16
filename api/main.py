@@ -28,6 +28,7 @@ class QueryRequest(BaseModel):
     session_id: Optional[str] = "default"
     quick_mode: Optional[bool] = False
     economy_mode: Optional[bool] = False
+    deep_verify_mode: Optional[bool] = False
 
 # Simple in-memory storage for session context
 sessions: Dict[str, ConversationManager] = {}
@@ -64,6 +65,7 @@ async def process_query_stream(req: QueryRequest):
                 conversation_context=context,
                 quick_mode=bool(req.quick_mode),
                 economy_mode=bool(req.economy_mode),
+                deep_verify_mode=bool(req.deep_verify_mode),
             ):
                 yield f"data: {event_json}\n\n"
                 
@@ -115,6 +117,7 @@ def process_query(req: QueryRequest):
             conversation_context=context,
             quick_mode=bool(req.quick_mode),
             economy_mode=bool(req.economy_mode),
+            deep_verify_mode=bool(req.deep_verify_mode),
         )
         
         # Add to conversation history
