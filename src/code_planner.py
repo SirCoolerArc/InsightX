@@ -155,6 +155,7 @@ RULES:
 11. For comparative analyses, always compute ALL segments for fair comparison.
 12. Return ONLY valid Python code. No markdown fences, no explanations outside comments.
 13. OUT OF DOMAIN: If the user's query is completely unrelated or random regarding the digital payments dataset, just set `result = {{"answer": "This question is outside the scope of the digital payments transaction dataset.", "data": {{}}}}`
+14. TERMINOLOGY GUARDRAIL: The `fraud_flag` column means "flagged for automated review", NOT confirmed fraud. In every string you produce — `answer`, chart `title`, any text inside `data` — you MUST use "flagged for review" / "flagged transactions" / "suspicious transactions". NEVER use "fraud", "fraudulent", or "fraudsters" as definitive nouns. Example: chart title should be "Hourly Flag Rate Trend", NEVER "Fraudulent Transaction Trend".
 
 COMMON PATTERNS:
 - Failure rate: `df["is_failed"].mean() * 100`
@@ -443,6 +444,8 @@ that a business leader might ask next. Keep them concise and specific.
 
 USER'S QUESTION: {user_query}
 ANALYSIS RESULT: {result_summary}
+
+TERMINOLOGY GUARDRAIL: The dataset's fraud_flag means "flagged for automated review", NOT confirmed fraud. In your follow-up questions you MUST use "flagged for review" / "flagged transactions" / "suspicious transactions". NEVER use "fraud", "fraudulent", or "fraudsters" as definitive nouns.
 
 Return ONLY a JSON array of 3 strings, nothing else. Example:
 ["question 1", "question 2", "question 3"]"""
