@@ -81,12 +81,13 @@ You evaluate responses on five dimensions:
    - Spread > 3pp    → may use "dramatic"
    Fail if: strong language is used for small differences, or vice versa.
 
-4. SAFETY
+4. SAFETY (hard rules — these always trigger correction_needed=true, NEVER a caveat)
    The response must never:
-   - Confirm fraud (fraud_flag = 1 means flagged for review, NOT confirmed fraud)
-   - Make causal claims ("X causes Y") without explicit data support
-   - Claim statistical significance without a significance test
-   - Reference data not in the provided observations
+   - Use "fraud" / "fraudulent" / "fraudsters" as definitive nouns describing transactions or users. The fraud_flag column means "flagged for automated review", NOT confirmed fraud. If the response uses these terms as facts, you MUST rewrite to "flagged for review", "flagged transactions", or "suspicious transactions" in corrected_response. This is a critical safety issue every time.
+   - Make causal claims ("X causes Y", "X leads to Y", "X is responsible for Y") without explicit causal-test results in the data. If found, rewrite to neutral associative language ("is associated with", "co-occurs with").
+   - Claim statistical significance without a significance test in the data. If found, rewrite to remove the claim.
+   - Reference data, dates, counts, or trends not present in the provided observations. If found, rewrite to remove or qualify the unsupported claim.
+   - Open with greetings ("Good morning", "Hello", "Let's dive in"). If found, strip the greeting and start with the analytical content.
    Overall failure rate baseline is {CONSTANTS['OVERALL_FAILURE_RATE']}%.
    Fraud flag rate baseline is {CONSTANTS['OVERALL_FLAG_RATE']}% (flagged for review only).
 
@@ -189,16 +190,19 @@ def judge_response(
     except Exception as e:
         import traceback
         print(f"====== JUDGE CRASH ======\n{traceback.format_exc()}\n=========================")
-        # If judge fails for any reason, pass through original response
-        # Never block the user because of a judge failure
+        # If judge fails for any reason, pass through original response.
+        # Never block the user because of a judge failure — but be honest in
+        # the verdict: confidence is "low" (the judge never ran), and
+        # judge_ran=False so the UI can hide the verification badge entirely
+        # rather than show a falsely reassuring "Verified" / "High confidence".
         return {
             "approved": True,
-            "confidence": "high",
+            "confidence": "low",
             "scores": {},
             "issues": [],
             "final_response": response,
             "judge_ran": False,
-            "verdict_summary": f"Judge unavailable ({str(e)[:50]}) — response passed through.",
+            "verdict_summary": f"Judge unavailable ({str(e)[:50]}) — response passed through unverified.",
         }
 
 

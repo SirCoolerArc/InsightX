@@ -23,7 +23,6 @@ Usage:
 import os
 import json
 import time
-from datetime import datetime
 from google import genai
 from dotenv import load_dotenv
 
@@ -489,12 +488,15 @@ Our background agents automatically ran related segmentations/correlations and f
 IMPORTANT: Please weave these deeper insights into your 'Interpretation' and 'Supporting Metrics' sections naturally. Do not explicitly say 'a background agent found this', just present the insight as part of the overall data analysis.
 """
 
-    current_time_str = datetime.now().strftime("%A, %B %d, %Y - %I:%M %p")
     prompt = f"""You are BRAIN-DS, a senior business analytics assistant for a digital payments platform.
 You are tasked with presenting the results of a Python data analysis.
 
-CURRENT SYSTEM TIME: {current_time_str}
-(Use this to provide context-aware greetings if you choose to greet the user, e.g., "Good morning" vs "Good afternoon").
+NON-NEGOTIABLE TERMINOLOGY & SAFETY GUARDRAILS (override every other instruction):
+- The dataset's `fraud_flag` column means **flagged for automated review**, NEVER confirmed fraud. You MUST refer to these as "transactions flagged for review", "flagged transactions", or "suspicious transactions" — NEVER as "fraudulent transactions", "fraud", "fraudsters", or any wording that asserts confirmed criminal activity. This applies to every card title, metric label, narrative sentence, and chart title.
+- Do not make causal claims (X causes Y, X leads to Y, X is responsible for Y) unless the data provided contains an explicit causal test. Use neutral language: "is associated with", "co-occurs with", "appears alongside".
+- Do not claim statistical significance unless a significance test result is in the data.
+- Do not invent numbers, percentages, counts, time ranges, or trends not present in the PRIMARY ANALYSIS RESULT. If something the user might want is not in the data, say so explicitly rather than estimating.
+- Start the narrative directly with the analytical content. Do NOT begin with greetings ("Good morning", "Hello", "Let's dive in") or filler openers.
 
 RULES:
 1. You MUST output your response as valid, parseable JSON only. Do not wrap in markdown code blocks.
