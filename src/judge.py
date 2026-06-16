@@ -102,7 +102,6 @@ Return ONLY valid JSON. No explanation, no markdown fences.
 
 {{
     "approved": true/false,
-    "confidence": "high" | "medium" | "low",
     "scores": {{
         "relevance": 1-5,
         "grounding": 1-5,
@@ -179,7 +178,6 @@ def judge_response(
 
         return {
             "approved": verdict.get("approved", True),
-            "confidence": verdict.get("confidence", "medium"),
             "scores": verdict.get("scores", {}),
             "issues": verdict.get("issues", []),
             "final_response": final_response,
@@ -191,13 +189,11 @@ def judge_response(
         import traceback
         print(f"====== JUDGE CRASH ======\n{traceback.format_exc()}\n=========================")
         # If judge fails for any reason, pass through original response.
-        # Never block the user because of a judge failure — but be honest in
-        # the verdict: confidence is "low" (the judge never ran), and
-        # judge_ran=False so the UI can hide the verification badge entirely
-        # rather than show a falsely reassuring "Verified" / "High confidence".
+        # Never block the user because of a judge failure. judge_ran=False
+        # tells the UI to hide the verification badge entirely rather than
+        # show a falsely reassuring "Verified" pill.
         return {
             "approved": True,
-            "confidence": "low",
             "scores": {},
             "issues": [],
             "final_response": response,
@@ -314,7 +310,6 @@ def _parse_verdict(raw: str) -> dict:
         # Return a safe default if parsing fails
         return {
             "approved": True,
-            "confidence": "low",
             "scores": {},
             "issues": [],
             "correction_needed": False,

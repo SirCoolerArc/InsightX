@@ -204,14 +204,6 @@ export default function MessageBubble({ message }: { message: Message }) {
                             </div>
                         )}
 
-                        {/* Always Visible Confidence Score (At the very bottom) */}
-                        {!isUser && message.verdict?.confidence && (
-                            <div className="flex w-full mt-2">
-                                <div className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-500">
-                                    Confidence: <span className="text-slate-700 font-semibold capitalize">{message.verdict.confidence}</span>
-                                </div>
-                            </div>
-                        )}
                     </>
                 </div>
             </div>

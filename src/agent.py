@@ -480,7 +480,7 @@ def run_agent_stream(
             import traceback
             with open("crash_debug.txt", "w") as f:
                 f.write(traceback.format_exc())
-            return {"judge_ran": False, "confidence": "low"}
+            return {"judge_ran": False}
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         future_followups = executor.submit(_get_followups)
